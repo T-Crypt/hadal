@@ -37,7 +37,7 @@ test("the icon is drawn in the palette's colors", () => {
     );
     assert.doesNotMatch(
         svg,
-        /#ff9e64|#33ccff|#00ff99|#1a1b26|#13141c/,
+        /#ff9e64|#33ccff|#00ff99|#1a1b26|#13141c|#050d19/,
         "no color of the app's old icon is left",
     );
 });

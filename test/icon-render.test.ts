@@ -145,10 +145,10 @@ test("a maskable icon fills the square with the frame's color and keeps the art 
         ...pixels.subarray((y * size + x) * 3, (y * size + x) * 3 + 3),
     ];
 
-    assert.deepEqual(at(5, 5), [0x05, 0x0d, 0x19], "the corner is the depth's");
+    assert.deepEqual(at(5, 5), [0x0a, 0x10, 0x14], "the corner is the depth's");
     assert.deepEqual(
         at(90, 256),
-        [0x05, 0x0d, 0x19],
+        [0x0a, 0x10, 0x14],
         "outside the 80-pixel margin there is no art",
     );
     // Where the plain icon has its left upright (x = 192), the maskable one has it at 256 + (192 − 256) × 0.6875 = 212.

@@ -1,4 +1,5 @@
-// HADAL's docs: Starlight, at https://github.com/T-Crypt/hadal, beside the product site (site/).
+// HADAL's docs: Starlight, on GitHub Pages at https://t-crypt.github.io/hadal/docs/, beside the product site (site/).
+// `site` is the origin only: Pages serves the project under /hadal, and `base` below carries that path.
 import { copyFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { defineConfig } from "astro/config";
@@ -33,7 +34,7 @@ const sidebar = SIDEBAR.map(({ label, collapsed, items }) => ({
 }));
 
 export default defineConfig({
-    site: "https://github.com/T-Crypt/hadal",
+    site: "https://t-crypt.github.io",
     base: "/hadal/docs",
     trailingSlash: "always",
     devToolbar: { enabled: false },

@@ -1,6 +1,11 @@
 /*
- * HADAL's look on Starlight, as the product site has it (site/style.css): Tokyo Night colors, Geist for text,
- * JetBrains Mono for code, soft corners and thin borders. It follows the system's light or dark setting.
+ * HADAL's look on Starlight, as the product site has it (site/style.css): Bell, the app's default palette
+ * (docs/design/hadal-ui.md). Steel plates for depth, Geist for text, IBM Plex Mono for code and figures, hairlines,
+ * and one accent. It follows the system's light or dark setting.
+ *
+ * The three depths are the app's own: #0a1014 behind everything, #10181e to work on, #18242c raised. Ink, signal and
+ * status colors carry the app's measured contrasts (ink-1 16.7/15.6/13.8, ink-2 7.8/7.3/6.5, signal 11.8/11.0/9.7 on
+ * those depths).
  */
 @font-face {
     font-family: "Pocket Sans";
@@ -9,50 +14,76 @@
     font-display: swap;
 }
 
+/* The same variable IBM Plex Mono the app serves (web/fonts), so a figure reads alike in all three. */
 @font-face {
     font-family: "Pocket Mono";
-    src: url("../../../site/fonts/JetBrainsMono.woff2") format("woff2");
-    font-weight: 100 800;
+    src: url("../../../site/fonts/IBMPlexMono-Variable.woff2") format("woff2");
+    font-weight: 100 700;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: "Pocket Mono";
+    src: url("../../../site/fonts/IBMPlexMono-Variable-Italic.woff2") format("woff2");
+    font-weight: 100 700;
+    font-style: italic;
     font-display: swap;
 }
 
 :root {
     --sl-font-mono:
-        "Pocket Mono", "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+        "Pocket Mono", "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
     --sl-font: "Pocket Sans", "Geist", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-    --sl-color-accent-low: #1f2a4a;
-    --sl-color-accent: #7aa2f7;
-    --sl-color-accent-high: #c0d4ff;
-    --sl-color-white: #c0caf5;
-    --sl-color-gray-1: #a9b1d6;
-    --sl-color-gray-2: #9aa5ce;
-    --sl-color-gray-3: #7a82ad;
-    --sl-color-gray-4: #3b4261;
-    --sl-color-gray-5: #292e42;
-    --sl-color-gray-6: #1a1b26;
-    --sl-color-black: #13141c;
-    --pocket-ok: #9ece6a;
-    --pocket-warn: #e0af68;
-    --pocket-err: #f7768e;
+
+    /* The accent: signal, the one point of light. accent-low is the app's selection plate. */
+    --sl-color-accent-low: #1d3040;
+    --sl-color-accent: #65d9ff;
+    --sl-color-accent-high: #9fe4ff;
+
+    /* Depths and ink. gray-6 is what you work on, gray-5 what is raised, black the field behind it. */
+    --sl-color-white: #e5f1fc;
+    --sl-color-gray-1: #c7d9ea;
+    --sl-color-gray-2: #91a9bc;
+    --sl-color-gray-3: #8ba2af;
+    --sl-color-gray-4: #2e404c;
+    --sl-color-gray-5: #18242c;
+    --sl-color-gray-6: #10181e;
+    --sl-color-black: #0a1014;
+
+    /* Status, the app's own: ok, warn, err. */
+    --pocket-ok: #72e6c1;
+    --pocket-warn: #f0c674;
+    --pocket-err: #ff8a9b;
+
+    /* Asides take the same hues, so a note or a warning sits in the steel field rather than beside it. */
+    --sl-hue-orange: 25;
+    --sl-hue-green: 161;
+    --sl-hue-blue: 206;
+    --sl-hue-purple: 198;
+    --sl-hue-red: 351;
 }
 
-/* Light: every text color keeps a contrast of 4.5:1 or more on these backgrounds. */
+/*
+ * Light: the same plates on steel paper. The accent is one deep steel cyan, here and on the product site, and it
+ * keeps 4.6:1 or more on every ground a link or a figure can sit on. gray-4 stays a rule and icon color, the role
+ * Starlight gives it.
+ */
 :root[data-theme="light"] {
-    --sl-color-accent-low: #dbe5fb;
-    --sl-color-accent: #2e5bd8;
-    --sl-color-accent-high: #1f2335;
-    --sl-color-white: #1f2335;
-    --sl-color-gray-1: #3b4261;
-    --sl-color-gray-2: #4c5375;
-    --sl-color-gray-3: #5c6383;
-    --sl-color-gray-4: #b4bccf;
-    --sl-color-gray-5: #d4d9e5;
-    --sl-color-gray-6: #eceef4;
-    --sl-color-gray-7: #f5f6fa;
-    --sl-color-black: #ffffff;
-    --pocket-ok: #3f6d12;
-    --pocket-warn: #8a5a00;
-    --pocket-err: #b4233c;
+    --sl-color-accent-low: #d3e9f3;
+    --sl-color-accent: #075e76;
+    --sl-color-accent-high: #064e63;
+    --sl-color-white: #0d1519;
+    --sl-color-gray-1: #1b2830;
+    --sl-color-gray-2: #33434c;
+    --sl-color-gray-3: #54666f;
+    --sl-color-gray-4: #7f909a;
+    --sl-color-gray-5: #c6ced4;
+    --sl-color-gray-6: #e8edf1;
+    --sl-color-gray-7: #eef1f4;
+    --sl-color-black: #f9fafb;
+    --pocket-ok: #12674f;
+    --pocket-warn: #7a5310;
+    --pocket-err: #9c2438;
 }
 
 .site-title,
@@ -66,18 +97,23 @@ h1#_top {
     letter-spacing: -0.035em;
 }
 
-/* Soft corners, as the product site and the app have. */
+/* Figures and commands in the etched mono, as the app's readouts are. */
+.sl-markdown-content code {
+    font-variant-ligatures: none;
+}
+
+/* The etched corners: a surface 6px, a control or a chip 3px. */
 .sl-link-button {
-    border-radius: 999px;
+    border-radius: 3px;
 }
 
 .card,
 .sl-link-card {
-    border-radius: 14px;
+    border-radius: 6px;
 }
 
 .sl-markdown-content code {
-    border-radius: 5px;
+    border-radius: 3px;
 }
 
 /* Wide tables scroll inside themselves on a phone, not the page. */

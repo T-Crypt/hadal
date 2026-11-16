@@ -1671,6 +1671,30 @@ kbd {
     color: var(--muted);
 }
 
+/* A segment that opens its panel: the same etched cell, with a hover and a focus ring, never a button's chrome. */
+button.rail-seg {
+    height: 100%;
+    margin: 0;
+    border-top: 0;
+    border-bottom: 0;
+    border-left: 0;
+    background: none;
+    cursor: pointer;
+}
+
+@media (hover: hover) {
+    button.rail-seg:hover {
+        background: color-mix(in oklab, var(--h-ink-1) 5%, transparent);
+    }
+}
+
+/* What runs now can be long: it clips, and its title holds the whole. */
+.rail-seg--now b {
+    max-width: 28ch;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
 .rail-seg .lab {
     color: var(--faint);
     text-transform: lowercase;
@@ -1735,7 +1759,8 @@ kbd {
 /* Below the room for the extras, the bar drops think and now so the title keeps its room. */
 @container topbar (max-width: 919px) {
     .rail-seg--think,
-    .rail-seg--now {
+    .rail-seg--now,
+    .rail-seg--extra {
         display: none;
     }
 }

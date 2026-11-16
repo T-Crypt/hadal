@@ -40,7 +40,17 @@ import {
     pipBoard,
     togglePip,
 } from "./pip.js";
-import { Drawer, envLight, RailNav, ResizeHandle, SessionList, toSessions } from "./sessions.js";
+import { sessionNow } from "./agent-now.js";
+import { showContext } from "./commands.js";
+import {
+    Drawer,
+    envLight,
+    RailNav,
+    ResizeHandle,
+    SessionList,
+    toggleBoard,
+    toSessions,
+} from "./sessions.js";
 import { SessionTabs } from "./session-tabs.js";
 // Loaded for what it does: it gives replies' Markdown the component for pages, images, and diffs in code blocks.
 import "./rich.js";
@@ -59,6 +69,7 @@ import {
     actions,
     attempt,
     canSteer,
+    collab,
     dismiss,
     filesShown,
     holdNotice,
@@ -263,7 +274,12 @@ function Topbar() {
         agent?.thinkingLevel && agent.thinkingLevel !== "off" ? agent.thinkingLevel : null;
     const railSpend = conversation?.spend?.spent ?? view.stats?.cost ?? 0;
     const here = store.state.presence.length || view.viewers?.length || 1;
+    const railCache =
+        view.stats?.cacheRate === undefined ? undefined : Math.round(view.stats.cacheRate * 100);
+    const railNow = sessionNow(view);
+    const railSchedules = view.schedules?.length ?? 0;
     const current = sessions.find((session) => session.id === conversationId);
+    const railAgents = (current?.subagents?.working ?? 0) + (current?.subagents?.waiting ?? 0);
     // The same light the navigator's environment row shows: every live session in this folder, not this one alone.
     const envState = current
         ? envLight(sessions.filter((session) => session.cwd === current.cwd && !session.archived))
@@ -347,12 +363,17 @@ function Topbar() {
         </div>
         <div class="rail-readout" data-part="rail-readout">
             <span class=${`rail-env rail-env--${envState}`} title=${envTitle} aria-hidden="true"></span>
-            ${railModel && html`<span class="rail-seg"><span class="lab">model</span><b>${railModel}</b></span>`}
+            ${railModel && html`<button type="button" class="rail-seg" title="Model and thinking" onClick=${() => openSheet({ type: "model" })}><span class="lab">model</span><b>${railModel}</b></button>`}
             ${current?.sealed && html`<span class="rail-seg rail-seg--seal" title="This session is locked to local models: its folder is locked"><span class="lab">seal</span><b>local</b></span>`}
-            ${railThink && html`<span class="rail-seg rail-seg--think"><span class="lab">think</span><b>${railThink}</b></span>`}
+            ${railThink && html`<button type="button" class="rail-seg rail-seg--think" title="Model and thinking" onClick=${() => openSheet({ type: "model" })}><span class="lab">think</span><b>${railThink}</b></button>`}
             ${
                 ctxPercent !== null &&
-                html`<span class="rail-seg" title=${`${ctxUsed} of ${ctxWindow} tokens in context`}>
+                html`<button
+                    type="button"
+                    class="rail-seg"
+                    title=${`${ctxUsed} of ${ctxWindow} tokens in context: where they go`}
+                    onClick=${() => showContext()}
+                >
                     <span class="lab">ctx</span>
                     <span class="meter" aria-hidden="true"
                         >${Array.from(
@@ -360,12 +381,15 @@ function Topbar() {
                             (_, i) => html`<i class=${i < ctxSteps ? "on" : ""}></i>`,
                         )}</span
                     ><b>${ctxPercent}%</b>
-                </span>`
+                </button>`
             }
-            ${railSpend > 0 && html`<span class="rail-seg"><span class="lab">spend</span><b>$${railSpend.toFixed(2)}</b></span>`}
-            ${current?.busy && html`<span class="rail-seg rail-seg--now"><span class="lab">now</span><b class="signal">working…</b></span>`}
+            ${railCache !== undefined && html`<span class="rail-seg rail-seg--extra" title=${`${railCache}% of the input came from the cache`}><span class="lab">cache</span><b>${railCache}%</b></span>`}
+            ${railSpend > 0 && html`<button type="button" class="rail-seg" title="Spend" onClick=${() => openSheet({ type: "spend" })}><span class="lab">spend</span><b>$${railSpend.toFixed(2)}</b></button>`}
+            ${railNow && html`<span class="rail-seg rail-seg--now" title=${railNow}><span class="lab">now</span><b class="signal">${railNow}</b></span>`}
             <span class="rail-right">
-                <span class="rail-seg" title=${`${here} here`}><span class="lab">who</span><b>${here}</b></span>
+                ${railAgents > 0 && html`<button type="button" class="rail-seg rail-seg--extra" title="Subagents at work" onClick=${() => toggleBoard("subagents")}><span class="lab">agents</span><b>${railAgents}</b></button>`}
+                ${railSchedules > 0 && html`<button type="button" class="rail-seg rail-seg--extra" title="Scheduled messages" onClick=${() => openSheet({ type: "schedules" })}><span class="lab">sched</span><b>${railSchedules}</b></button>`}
+                <button type="button" class="rail-seg" title=${`${here} here: people and invites`} onClick=${() => openSheet({ type: collab() ? "people" : "invite" })}><span class="lab">who</span><b>${here}</b></button>
             </span>
         </div>
         ${slotItems("topbar").map(({ node }) => node)}

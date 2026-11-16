@@ -125,6 +125,13 @@ Requires Node.js 22.19 or newer. Runs on Linux, macOS and Windows; Linux is the 
 first with the terminal app (from the checkout, `npx pi`, then `/login`), or later from the app's Providers sheet.
 
 ```bash
+npm install -g @t-crypt/hadal
+hadal
+```
+
+From a checkout, which is also how you change HADAL:
+
+```bash
 git clone https://github.com/T-Crypt/hadal.git
 cd hadal
 npm install
@@ -137,7 +144,9 @@ key: keep it private. `--rotate-token` replaces it and signs out every device th
 While it runs: **q** quit, **r** restart the server, **a** change access, **o** open in a browser, **s** show the QR
 code.
 
-To update a git checkout: stop the server, back up the data folder, pull, run `npm install`, and start again.
+To update: Menu → **Update HADAL** does it from the app, for a global npm install and for a checkout the service user
+owns. By hand: `npm install -g @t-crypt/hadal@latest`, or for a checkout stop the server, back up the data folder,
+pull, run `npm install`, and start again.
 
 Also: Docker or Podman with `docker compose up -d --build` ([docs/docker.md](docs/docker.md)), and a systemd unit
 ([docs/systemd.md](docs/systemd.md)).

@@ -4,18 +4,19 @@ HADAL ships a stable release every Friday. Between two Fridays, the next release
 
 ## The week
 
-| When                    | What happens                                                                                                                                                                                |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Friday, after a release | The branch of the next release opens: `release/X.Y.0`, from `main`.                                                                                                                         |
-| Saturday to Thursday    | Ready pull requests merge into the release branch. A beta comes out when something worth trying lands.                                                                                      |
-| Thursday, end of day    | Code freeze: from now on, only fixes go into the release branch. The last beta comes out.                                                                                                   |
-| Friday                  | The review and live-test rounds run on the release branch, and their fixes go in. Then the release pull request merges into `main`, and the tag `vX.Y.0` and the GitHub release publish it. |
+| When                    | What happens                                                                                                                                                                                                                                              |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Friday, after a release | The branch of the next release opens: `release/X.Y.0`, from `main`.                                                                                                                                                                                       |
+| Saturday to Thursday    | Ready pull requests merge into the release branch. A beta comes out when something worth trying lands.                                                                                                                                                    |
+| Thursday, end of day    | Code freeze: from now on, only fixes go into the release branch. The last beta comes out.                                                                                                                                                                 |
+| Friday                  | The review and live-test rounds run on the release branch, and their fixes go in. Then the release pull request merges into `main`, and the tag `vX.Y.0` and the GitHub release publish it. The release workflow also puts it on npm as `@t-crypt/hadal`. |
 
 A week with nothing to ship has no release. A change that is not ready by the freeze waits for the next week.
 
-A release is the tag and the GitHub release. The app reads both to offer an update. This repository does not publish to
-npm yet: `package.json` is private, and there is no publish workflow, so `npm install -g hadal` is not a way to install it
-today. The first release is `v0.29.0`, 2026-11-17.
+A release is the tag and the GitHub release, and the app reads both to offer an update. Publishing a release also runs
+`.github/workflows/publish.yml`, which puts the package on npm as `@t-crypt/hadal`; it needs the `NPM_TOKEN` secret, and
+a version with a pre-release part goes to npm's `beta` dist-tag, never to `latest`. The first release is `v0.29.0`,
+2026-11-17: it is a GitHub release only, so an npm install takes the release after it.
 
 ## Versions
 
@@ -25,9 +26,9 @@ today. The first release is `v0.29.0`, 2026-11-17.
 
 ## Pull requests
 
-- Open pull requests against `main`. A maintainer merges a ready one into the open release branch, with a merge commit that names the pull request and its author: `Merge PR #186: … (@Haichiu)`. Your commits keep your name.
+- Open pull requests against `hadal`. A maintainer merges a ready one into the open release branch, with a merge commit that names the pull request and its author: `Merge PR #186: … (@Haichiu)`. Your commits keep your name.
 - A maintainer's follow-up commits on a pull request name it too: "Follow-up to PR #186 by @Haichiu".
-- GitHub marks the pull request merged when the release branch merges into `main`.
+- GitHub marks the pull request merged when the release branch merges into `hadal`.
 
 ## Publishing a beta
 
@@ -42,7 +43,7 @@ A pre-release on GitHub is not the repository's latest release, and the version 
 ## Running betas
 
 - **From the app**: turn on **Beta updates** in Menu → Extensions → Installed → HADAL updates (since 0.27.0). Menu → Update HADAL then offers betas too, marked **Beta**. Turn it off to wait for the next stable release: the app never offers an older version. With **Install new versions by themselves** on too, betas install by themselves.
-- **A global npm install**: not available yet, because this repository does not publish to npm.
+- **A global npm install**: `npm install -g @t-crypt/hadal@beta`. Go back with `npm install -g @t-crypt/hadal@latest`.
 - **A git checkout**: `git checkout v0.27.0-beta.1`, then `npm install`.
 
 A beta is tested less than a release. Back up `~/.hadal` before you run one: a beta can change stored data one way, and then the version before it cannot read the data.

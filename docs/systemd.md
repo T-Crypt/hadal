@@ -102,7 +102,7 @@ sudo systemctl start hadal@lan
 
 If the unit file changed, copy it again and run `sudo systemctl daemon-reload` before starting.
 
-Menu → **Update HADAL** can also update the checkout from the app, when the service user owns it (`sudo chown -R hadal: /opt/hadal`). With the checkout owned by another user, as in the steps above, the sheet only says when a new version is out. A global npm install (`npm install -g hadal`) updates from the sheet the same way, when the service user can write the folder that holds the package. An update from the app does not back up the data folder: for a release whose notes have a warning, back it up first, as above.
+Menu → **Update HADAL** can also update the checkout from the app, when the service user owns it (`sudo chown -R hadal: /opt/hadal`). With the checkout owned by another user, as in the steps above, the sheet only says when a new version is out. A global npm install (`npm install -g @t-crypt/hadal`) updates from the sheet the same way, when the service user can write the folder that holds the package. An update from the app does not back up the data folder: for a release whose notes have a warning, back it up first, as above.
 
 ## When it does not start
 

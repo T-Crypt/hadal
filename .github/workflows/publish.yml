@@ -1,0 +1,61 @@
+# Publishes a GitHub release to npm, which is how an npm install learns of a new version (docs/releases.md).
+# A release marked as pre-release goes to the `beta` dist-tag, so a person who left Beta updates off never gets
+# one. npm's provenance needs a public repository, so the flag comes in only when the repository is public.
+# `prepublishOnly` in package.json runs the checks, and `prepack` puts the lock file in the tarball as
+# `npm-shrinkwrap.json`, so this workflow runs the scripts rather than publishing around them.
+name: Publish
+
+on:
+    release:
+        types:
+            - published
+
+permissions:
+    contents: read
+    id-token: write
+
+jobs:
+    npm:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+              with:
+                  persist-credentials: false
+            - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+              with:
+                  node-version: 24
+                  registry-url: https://registry.npmjs.org
+                  cache: npm
+            - name: Check the release tag against the version in package.json
+              env:
+                  TAG: ${{ github.ref_name }}
+              run: |
+                  version=$(node -p "require('./package.json').version")
+
+                  if [ "v$version" != "$TAG" ]; then
+                      echo "::error::the release is $TAG and package.json says $version."
+                      exit 1
+                  fi
+            - name: Install the packages
+              run: npm ci
+            - name: Work out the dist-tag and whether provenance can be attached
+              id: args
+              env:
+                  PRERELEASE: ${{ github.event.release.prerelease }}
+                  VISIBILITY: ${{ github.repository_visibility }}
+              run: |
+                  if [ "$PRERELEASE" = "true" ]; then
+                      echo "tag=beta" >> "$GITHUB_OUTPUT"
+                  else
+                      echo "tag=latest" >> "$GITHUB_OUTPUT"
+                  fi
+
+                  if [ "$VISIBILITY" = "public" ]; then
+                      echo "provenance=--provenance" >> "$GITHUB_OUTPUT"
+                  fi
+            - name: Publish
+              env:
+                  NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+                  DIST_TAG: ${{ steps.args.outputs.tag }}
+                  PROVENANCE: ${{ steps.args.outputs.provenance }}
+              run: npm publish --access public --tag "$DIST_TAG" $PROVENANCE

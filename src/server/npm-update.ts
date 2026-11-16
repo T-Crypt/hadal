@@ -1,6 +1,7 @@
 /** Install a release in an isolated global prefix while the live npm package keeps running. */
 import { spawn } from "node:child_process";
 import { mkdir, readFile, rm } from "node:fs/promises";
+import { PACKAGE } from "./brand.ts";
 import { npmCommand } from "./npm-install.ts";
 import { readPending, stagedPackagePath, updatePaths } from "./update-state.ts";
 
@@ -47,7 +48,7 @@ export async function stageNpmUpdate(
                 "--no-audit",
                 "--no-fund",
                 "--",
-                options.spec ?? `hadal@${version}`,
+                options.spec ?? `${PACKAGE}@${version}`,
             ];
             const child = spawn(
                 command.shell ? `"${command.file}"` : command.file,
@@ -86,7 +87,7 @@ export async function stageNpmUpdate(
             await readFile(`${stagedPackagePath(appRoot)}/package.json`, "utf8"),
         ) as { name?: unknown; version?: unknown };
 
-        if (manifest.name !== "hadal" || manifest.version !== version) {
+        if (manifest.name !== PACKAGE || manifest.version !== version) {
             throw new Error(
                 "The staged npm package does not match the requested name and version.",
             );

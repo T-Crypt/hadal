@@ -9,8 +9,9 @@ import {
     symlinkSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { test } from "node:test";
+import { PACKAGE } from "../src/server/brand.ts";
 import { npmInstallKind, npmWritable } from "../src/server/npm-install.ts";
 import { npmRelease, Updates } from "../src/server/updates.ts";
 
@@ -18,23 +19,24 @@ import { npmRelease, Updates } from "../src/server/updates.ts";
 test("only the exact global npm root can update; local and npx installs show their own command", async () => {
     const root = mkdtempSync(join(tmpdir(), "hadal-install-kinds-"));
     const before = process.env.npm_config_prefix;
-    const global = join(
-        root,
-        "prefix",
-        process.platform === "win32" ? "node_modules" : "lib/node_modules",
-        "hadal",
-    );
-    const local = join(root, "project", "node_modules", "hadal");
-    const npx = join(root, "cache", "_npx", "abc", "node_modules", "hadal");
+    // What people install now is scoped, and an install from before the scope sits beside it.
+    const scope = ["@t-crypt", "hadal"];
+    const globalRoot = process.platform === "win32" ? "node_modules" : "lib/node_modules";
+    const globalModules = join(root, "prefix", globalRoot);
+    const global = join(root, "prefix", globalRoot, ...scope);
+    const legacy = join(globalModules, "hadal");
+    const local = join(root, "project", "node_modules", ...scope);
+    const npx = join(root, "cache", "_npx", "abc", "node_modules", ...scope);
 
     process.env.npm_config_prefix = join(root, "prefix");
 
     try {
-        for (const path of [global, local, npx]) {
+        for (const path of [global, legacy, local, npx]) {
             mkdirSync(path, { recursive: true });
         }
 
         assert.equal(await npmInstallKind(global), "npm-global");
+        assert.equal(await npmInstallKind(legacy), "npm-global", "an install of the old name");
         assert.equal(await npmInstallKind(local), "npm-local");
         assert.equal(await npmInstallKind(npx), "npx");
         assert.equal(await npmInstallKind(root), "unknown");
@@ -45,8 +47,8 @@ test("only the exact global npm root can update; local and npx installs show the
 
         for (const [path, kind, command] of [
             [global, "npm-global", undefined],
-            [local, "npm-local", "npm install hadal@latest"],
-            [npx, "npx", "npx hadal@latest"],
+            [local, "npm-local", `npm install ${PACKAGE}@latest`],
+            [npx, "npx", `npx ${PACKAGE}@latest`],
         ] as const) {
             const makeUpdates = (npmRollback = true) =>
                 new Updates({
@@ -112,8 +114,8 @@ test("only the exact global npm root can update; local and npx installs show the
 
         const packages = join(root, "packages");
 
-        renameSync(dirname(global), packages);
-        symlinkSync(packages, dirname(global), "dir");
+        renameSync(globalModules, packages);
+        symlinkSync(packages, globalModules, "dir");
         assert.equal(
             await npmInstallKind(realpathSync(global)),
             "npm-global",

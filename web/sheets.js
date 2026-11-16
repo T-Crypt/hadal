@@ -27,6 +27,7 @@ import { InviteSheet, MyPhoto, PeopleSheet } from "./sheets/people.js";
 import { AuthDialog, ProvidersSheet } from "./sheets/providers.js";
 import { HooksSheet } from "./sheets/hooks.js";
 import { HostsSheet } from "./sheets/hosts.js";
+import { HostRunsSheet } from "./sheets/host-runs.js";
 import { SchedulesSheet } from "./sheets/schedules.js";
 import { SessionSheet } from "./sheets/session.js";
 import { ShortcutsSheet } from "./sheets/shortcuts.js";
@@ -227,6 +228,9 @@ function sheetBody(sheet) {
             break;
         case "hosts":
             body = html`<${HostsSheet} />`;
+            break;
+        case "hostRuns":
+            body = html`<${HostRunsSheet} />`;
             break;
         case "extensions":
         case "gallery":

@@ -17,6 +17,7 @@ import {
 } from "./files-panel.js";
 import { ExtensionPage, ExtensionPanel, extPanelShown } from "./extension-ui.js";
 import { startEdgeBack, startSwipes, useDragToClose } from "./gestures.js";
+import { hostReadout } from "./host-runs.js";
 import { Splash } from "./home.js";
 import { Launcher } from "./launcher.js";
 import "./embedder.js";
@@ -260,6 +261,15 @@ function Topbar() {
         [sessions, conversationId],
     );
     const title = conversation?.title ?? listed ?? (store.state.missing ? "Not found" : "Loading…");
+    // The hosts this session reached, read once per change of its entries.
+    const hostInfo = useMemo(() => hostReadout(view, { cwd }), [view.entries, view.order, cwd]);
+    const hostLatest = hostInfo.latest;
+    const hostNames = hostInfo.summary.hosts.map((host) => host.name);
+    const hostFailed = hostInfo.summary.hosts.some((host) => host.failed > 0);
+    const hostRunning =
+        view.live?.busy === true &&
+        hostInfo.runs.at(-1)?.status === "running" &&
+        hostInfo.runs.at(-1)?.host.local === false;
 
     // The readout rail: the same figures the status line under the message box shows, read across the top like a
     // control room. Desk only; on a phone the status line is the readout. Every value is the store's own, so the rail
@@ -363,6 +373,20 @@ function Topbar() {
         </div>
         <div class="rail-readout" data-part="rail-readout">
             <span class=${`rail-env rail-env--${envState}`} title=${envTitle} aria-hidden="true"></span>
+            ${
+                hostLatest &&
+                html`<button
+                    type="button"
+                    class=${`rail-seg rail-seg--host rail-seg--extra ${hostFailed ? "warn" : ""} ${hostRunning ? "on" : ""}`}
+                    title=${`Where commands ran: ${hostInfo.summary.local.count} here, ${hostInfo.summary.hosts.map((host) => `${host.count} on ${host.name}`).join(", ")}`}
+                    onClick=${() => openSheet({ type: "hostRuns" })}
+                >
+                    <span class="lab">host</span>
+                    <b>@${hostLatest.name}</b>
+                    ${hostNames.length > 1 && html`<span class="num">+${hostNames.length - 1}</span>`}
+                    ${hostFailed && html`<span class="failed" title="A call there failed">!</span>`}
+                </button>`
+            }
             ${railModel && html`<button type="button" class="rail-seg" title="Model and thinking" onClick=${() => openSheet({ type: "model" })}><span class="lab">model</span><b>${railModel}</b></button>`}
             ${current?.sealed && html`<span class="rail-seg rail-seg--seal" title="This session is locked to local models: its folder is locked"><span class="lab">seal</span><b>local</b></span>`}
             ${railThink && html`<button type="button" class="rail-seg rail-seg--think" title="Model and thinking" onClick=${() => openSheet({ type: "model" })}><span class="lab">think</span><b>${railThink}</b></button>`}

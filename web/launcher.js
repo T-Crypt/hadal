@@ -435,6 +435,13 @@ function actionItems() {
             run: () => toggleBoard("running"),
         },
         session && {
+            label: "Where commands ran",
+            detail: "the session's calls, here and on each host",
+            keywords: "hosts ssh runs trace log",
+            icon: "server",
+            run: () => openSheet({ type: "hostRuns" }),
+        },
+        session && {
             label: "Background",
             detail: "what commands print as they run",
             icon: "terminal",

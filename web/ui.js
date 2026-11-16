@@ -1217,6 +1217,8 @@ const ICONS = {
     tablet: "M5 4h14a1 1 0 011 1v14a1 1 0 01-1 1H5a1 1 0 01-1-1V5a1 1 0 011-1zM11 17h2",
     monitor: "M3 4h18v12H3zM8 20h8M12 16v4",
     terminal: "M4 5h16v14H4zM8 10l2 2-2 2M12 14h4",
+    // Another machine: a two-bay rack.
+    server: "M4 4h16v6H4zM4 14h16v6H4zM8 7h.01M8 17h.01M12 7h.01M12 17h.01",
     fit: "M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5",
     // Compact: two rules, and what is between them pressed toward the middle.
     compact: "M4 3h16M4 21h16M12 6v5M9 8l3 3 3-3M12 18v-5M9 16l3-3 3 3",

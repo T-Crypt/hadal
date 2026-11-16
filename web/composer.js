@@ -1,6 +1,6 @@
 // The message box: send, steer or queue while busy, attach files, mention files with @, run commands with !, recall
 // what was sent before (↑, Ctrl+R), fold long pastes, pick the model, stop.
-import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
 import { Avatar } from "./avatar.js";
 import { boxKey, keyBox } from "./box-keys.js";
 import { browserAvailable } from "./browser.js";
@@ -17,6 +17,7 @@ import {
 import { withQuote } from "./quote-text.js";
 import { loadFiles, mentionAt, mentionText, suggestFiles } from "./files.js";
 import { remember, searchHistory, sentHistory } from "./history.js";
+import { hostReadout } from "./host-runs.js";
 import { personStorage } from "./person-storage.js";
 import {
     actions,
@@ -2184,7 +2185,7 @@ function PlacesButton() {
  * gaps, no "1 here" while you are alone, extensions' items' short forms, the guard's and the context's labels, then the
  * cache, then the wait for the first token.
  */
-const SHORTER = ["words", "here", "ext", "guard", "context", "cache", "wait"];
+const SHORTER = ["words", "here", "ext", "guard", "context", "cache", "wait", "hosts"];
 /** What each status line was last fitted for: its text. Its width is the observer's to watch. */
 const fitted = new WeakMap();
 
@@ -2440,6 +2441,91 @@ defineItem("status", {
 });
 
 const cacheRate = () => store.state.view.stats?.cacheRate;
+
+/** What the session's host footprint says, from one pass over its transcript. */
+function hostWords({ hosts, local }, latest) {
+    return [
+        ...hosts.map(
+            (host) =>
+                `${host.count} on ${host.name}${host.failed > 0 ? `, ${host.failed} failed` : ""}`,
+        ),
+        `${local.count} here${local.failed > 0 ? `, ${local.failed} failed` : ""}`,
+        `latest host ${latest.name}`,
+    ].join(" · ");
+}
+
+/** The status line's words, read once for each change of the transcript, not for every draw of the line. */
+let hostsDetail = { entries: null, order: null, cwd: null, text: null };
+
+function hostDetail() {
+    const { view } = store.state;
+    const cwd = view.agent?.cwd ?? view.conversation?.cwd;
+
+    if (
+        hostsDetail.entries !== view.entries ||
+        hostsDetail.order !== view.order ||
+        hostsDetail.cwd !== cwd
+    ) {
+        const { summary, latest } = hostReadout(view, { cwd });
+
+        hostsDetail = {
+            entries: view.entries,
+            order: view.order,
+            cwd,
+            text: latest === null ? null : hostWords(summary, latest),
+        };
+    }
+
+    return hostsDetail.text;
+}
+
+/**
+ * Where this session's commands ran: the remote host it reached most recently, how many other hosts it used, and
+ * whether anything failed. A tap opens the run log. Drawn as its own component, so the transcript is read once for each
+ * change of its entries, not for every token.
+ */
+function HostsNow() {
+    const { view } = store.state;
+    const cwd = view.agent?.cwd ?? view.conversation?.cwd;
+    const { runs, summary, latest } = useMemo(
+        () => hostReadout(view, { cwd }),
+        [view.entries, view.order, cwd],
+    );
+
+    if (latest === null) {
+        return null;
+    }
+
+    const failed = summary.hosts.reduce((count, host) => count + host.failed, 0);
+    // A call with no result is running only while HADAL is: one cut off by a restart keeps its missing result.
+    const running =
+        view.live?.busy === true &&
+        runs.at(-1)?.status === "running" &&
+        runs.at(-1)?.host.local === false;
+    const more = summary.hosts.length - 1;
+    const words = hostWords(summary, latest);
+
+    return html`<button
+        type="button"
+        class=${`hosts-now ${running ? "running" : ""} ${failed > 0 ? "warn" : ""}`}
+        aria-label=${`Where commands ran: ${words}`}
+        title=${words}
+        onClick=${() => openSheet({ type: "hostRuns" })}
+    >
+        <${Icon} name="server" size=${11} />
+        <span class="host-name">@${latest.name}</span>
+        ${more > 0 && html`<span class="num">+${more}</span>`}
+        ${failed > 0 && html`<span class="failed" title=${`${failed} failed`}>!</span>`}
+    </button>`;
+}
+
+defineItem("status", {
+    id: "core:hosts",
+    label: "Hosts",
+    order: 450,
+    render: () => html`<${HostsNow} />`,
+    detail: () => hostDetail(),
+});
 
 defineItem("status", {
     id: "core:cache",

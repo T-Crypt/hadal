@@ -1,4 +1,5 @@
 // A tool call in one line, as transcripts and peek tiles show it.
+import { callHost, HOST_TOOLS } from "./host-runs.js";
 
 const short = (text, max = 90) => {
     const flat = String(text ?? "")
@@ -27,22 +28,18 @@ export function describersChanged() {
 export const describersRevision = () => ownRevision;
 
 /**
- * A tool call in one line: an icon, a label, and what it acts on. Peek tiles describe calls this way too. `own` marks a
- * call an extension described.
+ * A tool call in one line: an icon, a label, and what it acts on, and the host it runs on when it leaves this machine.
+ * Peek tiles describe calls this way too. `own` marks a call an extension described.
  */
 export function describeCall(call) {
     const described = describeOne(call);
-    const host = call.args?.host;
+    const host = HOST_TOOLS.includes(call.name) ? callHost(call) : { local: true, name: "" };
+    const label = described.label === "" ? call.name : described.label;
 
-    // A call on another machine says which: `>_ @gpu nvidia-smi`.
-    return typeof host === "string" &&
-        host !== "" &&
-        ["bash", "read", "write", "edit"].includes(call.name)
-        ? {
-              ...described,
-              label: described.label === "" ? `@${host}` : `${described.label} @${host}`,
-          }
-        : described;
+    // A call on another machine says which: `bash @gpu …`.
+    return host.local
+        ? { ...described, label, host }
+        : { ...described, label: `${label} @${host.name}`, host };
 }
 
 function describeOne(call) {

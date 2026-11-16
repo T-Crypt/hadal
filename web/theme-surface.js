@@ -171,6 +171,7 @@ export const PARTS = [
     "session-decline",
     "session-allow",
     "rail-needs",
+    "rail-place",
     "session-branches",
     "session-chips",
     "session-chip",

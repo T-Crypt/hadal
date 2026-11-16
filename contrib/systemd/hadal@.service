@@ -1,0 +1,38 @@
+# HADAL as a systemd template unit. The instance name is the access mode; see docs/systemd.md.
+
+[Unit]
+Description=HADAL (%i access)
+Documentation=https://github.com/T-Crypt/hadal/blob/main/docs/systemd.md
+Wants=network-online.target
+After=network-online.target tailscaled.service
+
+[Service]
+Type=simple
+User=hadal
+Group=hadal
+
+Environment=HADAL_HOME=/opt/hadal
+Environment=HOME=/var/lib/hadal
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+EnvironmentFile=-/etc/hadal.env
+
+WorkingDirectory=/srv/hadal
+
+# %i is the access mode: local, lan, cloudflare, tailscale, or tailscale-serve.
+ExecStart=/usr/bin/env node ${HADAL_HOME}/bin/hadal.js --access %i --port 8787 --data /var/lib/hadal --cwd /srv/hadal
+
+Restart=on-failure
+RestartSec=5
+KillMode=mixed
+TimeoutStopSec=20
+
+StateDirectory=hadal
+StateDirectoryMode=0700
+UMask=0077
+LimitNOFILE=65536
+
+NoNewPrivileges=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

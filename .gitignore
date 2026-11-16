@@ -1,0 +1,26 @@
+node_modules/
+# What an update from the app keeps while it works (src/server/update-state.ts).
+/.pocket-update/
+*.log
+.env
+.env.*
+!.env.example
+.DS_Store
+Thumbs.db
+
+# [ome]: local hydrated state is never committed
+.ome/events/
+.ome/log/
+result
+result-*
+
+# Folders docker-compose.yml mounts from the host; user data, never tracked.
+/data/
+
+# What `npm pack` makes.
+/*.tgz
+
+# Skills provisioned into the project by the skills manager, and the design skill's working folder. Both are local to
+# the person working here; neither belongs in the package.
+/.agents/
+/.hallmark/

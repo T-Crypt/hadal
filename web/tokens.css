@@ -1,0 +1,103 @@
+/*
+ * HADAL's tokens: the named colors, scales, and curves the interface is drawn with. The palette engine (`theme.js`)
+ * keeps writing the `--o-*` variables of the palette chosen in Appearance; this file maps them to the `--h-*` names,
+ * which stand for depth and signal rather than a desktop's shell. New rules use `--h-*` only. The older names
+ * (`--bg`, `--card`, `--text`, …) are defined once, in style.css, as aliases of these; each section rewritten to
+ * `--h-*` deletes its use of the old name, and the alias goes when the last use does.
+ *
+ * "Depth is the metaphor. Surfaces sit at depths; light comes from what is alive. Nothing glows for decoration."
+ * (homelab projects/active/hadal/PLAN.md §3.1)
+ *
+ * Recorded Hallmark waivers (PLAN.md D5, the operator's brief wins):
+ *   1. Cyan on dark: `--h-signal` is the one accent. Held to an under-8% footprint of any viewport.
+ *   2. Ambient illumination: the two static light pools and the live marks. Signal is only ever a mark of the living.
+ *   3. The composer's frame: the message box's 3:1-or-more `--field-edge` border sits on the box, which also holds
+ *      the toolbar, so sloplint's render heuristic (it credits a bordered ancestor only within 48px of the field's
+ *      height) reads the bare textarea as 1.00:1. Measured, the box edge is 6.5/6.1/5.4 against depths 0/1/2.
+ */
+
+:root {
+    /* Depths. The field behind everything, the working surfaces, and what is raised over them (menus, cards,
+       fields). Light falls from the surface down: the deeper the surface sits, the darker it is. */
+    --h-depth-0: var(--o-bg-darker, #0a1014);
+    --h-depth-1: var(--o-bg, #10181e);
+    --h-depth-2: var(--o-bg-light, #18242c);
+
+    /* Ink. ink-1 is what is spoken, ink-2 what is said beside it, ink-3 the quiet marks (still 4.5:1 or more of
+       text, everywhere it is allowed). ink-mute is never text: disabled, placeholders, rules. */
+    --h-ink-1: var(--o-fg-bright, #e5f1fc);
+    --h-ink-2: var(--o-fg, #91a9bc);
+    --h-ink-3: color-mix(in oklab, var(--h-ink-2) 94%, var(--h-depth-0));
+    --h-ink-mute: var(--o-fg-dim, #5b7284);
+
+    /* Signal: the one accent — focus, active, live. It fills at most 8% of any viewport, and state is never its
+       color alone: each state also has a shape or a word. signal-2 is the second voice only (subagents, Lantern). */
+    --h-signal: var(--o-accent, #65d9ff);
+    --h-signal-ink: var(--o-bg-darker, #0a1014);
+    --h-signal-2: var(--o-magenta, #7fb2c8);
+
+    /* Status. */
+    --h-ok: var(--o-green, #72e6c1);
+    --h-warn: var(--o-yellow, #f0c674);
+    --h-err: var(--o-red, #ff8a9b);
+
+    /* Lines and floating ground. */
+    --h-line: color-mix(in oklab, var(--h-ink-1) 9%, transparent);
+    --h-line-strong: color-mix(in oklab, var(--h-ink-1) 22%, transparent);
+    --h-glass: color-mix(in oklab, var(--h-depth-1) 72%, transparent);
+
+    /* Space: one scale, four steps of doubling. */
+    --h-s-1: 2px;
+    --h-s-2: 4px;
+    --h-s-3: 8px;
+    --h-s-4: 12px;
+    --h-s-5: 16px;
+    --h-s-6: 24px;
+    --h-s-7: 40px;
+    --h-s-8: 64px;
+
+    /* Corners: an inner radius is the outer one minus its padding. */
+    --h-r-surface: 6px;
+    --h-r-control: 3px;
+    --h-r-chip: 3px;
+    --h-r-pill: 999px;
+
+    /* Heights stack: raised chrome, layers, notices, the top of the page. */
+    --h-z-raised: 1;
+    --h-z-dock: 10;
+    --h-z-menu: 100;
+    --h-z-sheet: 200;
+    --h-z-notice: 300;
+    --h-z-peek: 400;
+    --h-z-boot: 500;
+    --h-z-top: 600;
+
+    /* One shadow, and only for floating surfaces. Never a border plus a heavy shadow; never a card inside a card. */
+    --h-shadow: 0 12px 32px -12px color-mix(in oklab, var(--h-depth-0) 80%, transparent);
+    --h-shadow-float:
+        0 12px 32px -12px color-mix(in oklab, var(--h-depth-0) 80%, transparent),
+        inset 0 1px 0 color-mix(in oklab, var(--h-ink-1) 7%, transparent), 0 0 0 1px var(--h-line);
+
+    /* The four things glass: the command dock, menus, the launcher, and Lantern. Everything else is opaque depth. */
+    --h-glass-blur: blur(18px) saturate(1.15);
+
+    /* Type: two families, three weights. Sizes follow the reader's text size; these are the steps around it. */
+    --h-sans: var(--sans);
+    --h-mono: var(--mono);
+    --h-fs-xs: 0.8em;
+    --h-fs-sm: 0.875em;
+    --h-fs-base: 1em;
+    --h-fs-md: 1.15em;
+    --h-fs-lg: 1.4em;
+    --h-fs-xl: 2em;
+
+    /* Motion: three durations; exits run at 70% of their entrances. Only transform and opacity animate. */
+    --h-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+    --h-ease-in: cubic-bezier(0.64, 0, 0.78, 0);
+    --h-t-micro: 120ms;
+    --h-t-short: 220ms;
+    --h-t-long: 420ms;
+
+    /* Focus: on every control, on :focus-visible, instantly, never removed. */
+    --h-focus: 2px solid var(--h-signal);
+}

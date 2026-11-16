@@ -1,0 +1,413 @@
+// The subagents bar in a real browser at phone size where this machine has Chromium: it says what works, Stop stops
+// one, and a person's message that looks like a report stays theirs.
+import {
+    type App,
+    cleanUp,
+    context,
+    lastText,
+    newSession,
+    openApp,
+    owner,
+    root,
+    scriptedModel,
+    until,
+    offerSubagents,
+} from "./helpers.ts";
+import assert from "node:assert/strict";
+import { mkdtempSync } from "node:fs";
+import { createServer, type Server } from "node:http";
+import { join } from "node:path";
+import { after, before, test } from "node:test";
+import type { FauxResponseStep } from "@earendil-works/pi-ai";
+import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai/providers/faux";
+import type { ConversationId } from "@earendil-works/pi-durable";
+import { Browsers } from "../src/server/browser.ts";
+import { findBrowser } from "../src/server/browser/discovery.ts";
+import type { BrowserPage } from "../src/server/browser/page.ts";
+import { VIEWPORTS } from "../src/server/browser/viewport.ts";
+import { createHandler } from "../src/server/http.ts";
+import { SubagentsDoc } from "../src/server/docs.ts";
+
+const chromium = findBrowser();
+const real = {
+    skip: chromium === undefined ? "no Chromium-based browser on this machine" : false,
+} as const;
+
+/** "quick" answers at once; "slow" runs a long `sleep` first. The parent sleeps for `parentSleep` after starting them. */
+let parentSleep = 0;
+
+const route: FauxResponseStep = (request) => {
+    const all = JSON.stringify((request as { messages: unknown[] }).messages);
+    const { role, text } = lastText(request as never);
+    const subagent = /You are the subagent \\"([^\\]+)\\"/.exec(all)?.[1];
+
+    if (subagent?.startsWith("slow") && role !== "toolResult") {
+        return fauxAssistantMessage([fauxToolCall("bash", { command: "sleep 30" })], {
+            stopReason: "toolUse",
+        });
+    }
+
+    if (subagent !== undefined) {
+        return fauxAssistantMessage([fauxText(`${subagent}: all good`)]);
+    }
+
+    if (text === "orchestrate") {
+        return fauxAssistantMessage(
+            ["quick", "slow"].map((name) =>
+                fauxToolCall("subagent", {
+                    action: "spawn",
+                    name,
+                    message: `Check ${name}, please.`,
+                }),
+            ),
+            { stopReason: "toolUse" },
+        );
+    }
+
+    if (role === "toolResult" && text.includes("Started") && parentSleep > 0) {
+        return fauxAssistantMessage([fauxToolCall("bash", { command: `sleep ${parentSleep}` })], {
+            stopReason: "toolUse",
+        });
+    }
+
+    return fauxAssistantMessage([fauxText("noted")]);
+};
+
+let app: App;
+let model: ReturnType<typeof scriptedModel>;
+let server: Server;
+let browsers: Browsers;
+let page: BrowserPage;
+let base = "";
+
+async function inPage<T>(script: string): Promise<T> {
+    return JSON.parse(await page.evaluate(script)) as T;
+}
+
+const see = (script: string, what: string, timeoutMs?: number) =>
+    until(async () => (await inPage<boolean>(script)) === true, what, timeoutMs);
+
+/** The text of the first element `selector` finds, or null. */
+const textOf = (selector: string) =>
+    inPage<string | null>(
+        `return JSON.stringify(document.querySelector(${JSON.stringify(selector)})?.textContent.replace(/\\s+/g, " ").trim() ?? null)`,
+    );
+
+/** Wait until the first `selector` says something that `pattern` matches. */
+const says = (selector: string, pattern: RegExp, timeoutMs?: number) =>
+    until(
+        async () => pattern.test((await textOf(selector)) ?? ""),
+        `${selector} to say ${pattern}`,
+        timeoutMs,
+    );
+
+/** Past what slides in, as a person's next tap is (`back.js` lets go of a tap that lands on something just moved). */
+const settled = () => new Promise((resolve) => setTimeout(resolve, 450));
+
+/** A session at phone size whose parent starts "quick" and "slow". */
+async function started(sleep: number): Promise<ConversationId> {
+    parentSleep = sleep;
+    const id = await newSession(app);
+
+    await page.setViewport(VIEWPORTS.mobile);
+    await page.navigate(`${base}/s/${id}`);
+    await see(
+        `return JSON.stringify(document.querySelector(".composer textarea") !== null)`,
+        "the session",
+    );
+    await app.commands.submit(id, owner(app), { text: "orchestrate", requestId: `go-${id}` });
+
+    return id;
+}
+
+before(async () => {
+    if (chromium === undefined) {
+        return;
+    }
+
+    model = scriptedModel(route);
+    app = await openApp(model);
+    offerSubagents(app);
+    server = createServer(
+        createHandler({ app, listen: { host: "127.0.0.1", port: 0 }, restart: () => {} }),
+    );
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+    browsers = new Browsers({
+        dataDir: mkdtempSync(join(root, "subagents-ui-")),
+        load: async () => undefined,
+        save: () => {},
+    });
+    page = await browsers.open(1);
+    await page.navigate(`${base}/login?token=${encodeURIComponent(app.config.ownerToken)}`);
+    await see(
+        `return JSON.stringify((await import("/store.js")).store.state.me?.role === "owner")`,
+        "signed in",
+    );
+});
+
+after(async () => {
+    await browsers?.closeAll({ final: true });
+    server?.closeAllConnections();
+    server?.close();
+    await app?.close();
+    cleanUp();
+});
+
+test("the bar says what works; Stop stops one", real, async () => {
+    const id = await started(0);
+
+    await says(".agents-count", /^1 working · 1 done$/);
+    // The top bar's count unfolds it: a row each.
+    await settled();
+    await page.click({ selector: '.topbar [title="Subagents working"]' });
+    await see(
+        `return JSON.stringify(document.querySelectorAll(".agent-row").length === 2)`,
+        "a row each",
+    );
+    // Each row says the model it runs on: the session's own, so with no "↗".
+    const models = await inPage<string[]>(
+        `return JSON.stringify([...document.querySelectorAll(".agent-row .agent-model")].map((tag) => tag.textContent.trim()))`,
+    );
+
+    assert.equal(models.length, 2, "a model on each row");
+    assert.ok(
+        models.every((text) => text !== "" && !text.startsWith("↗")),
+        `the session's own model: ${models.join(", ")}`,
+    );
+    await settled();
+    await page.click({ label: "Stop slow" });
+    await says(".agents-count", /^1 stopped · 1 done$/, 15_000);
+    // The subagent itself: its run ended (the parent had not been working since it started them).
+    const slow = (await app.harness.snapshot(SubagentsDoc, id, context))!.agents.slow!;
+
+    assert.equal(app.isBusy(slow.conversationId), false, "the subagent stopped");
+});
+
+test("the board shows a sub-tile for each subagent at work, with what it does", real, async () => {
+    await started(0);
+    await page.setViewport(VIEWPORTS.desktop);
+    await settled();
+    await page.click({ selector: ".rail-agents" });
+    await see(
+        `return JSON.stringify((await import("/store.js")).store.state.board === "subagents")`,
+        "the board",
+    );
+    await see(
+        `return JSON.stringify([...document.querySelectorAll(".board-live .agent-tile")].some((tile) =>
+            tile.textContent.includes("slow") && tile.textContent.includes("sleep 30")))`,
+        "the slow subagent's sub-tile",
+        20_000,
+    );
+
+    const said = await inPage<string[]>(
+        `return JSON.stringify([...document.querySelectorAll(".board-live .agent-tile")].map((tile) => tile.textContent.replace(/\\s+/g, " ").trim()))`,
+    );
+
+    assert.ok(
+        said.some((text) => text.includes("slow") && text.includes("sleep 30")),
+        "the working subagent's sub-tile says what it does",
+    );
+
+    // A sub-tile picks the subagent where it is; the board stays open.
+    await page.evaluate(`
+        [...document.querySelectorAll(".board-live .agent-tile")]
+            .find((tile) => tile.textContent.includes("slow"))
+            .click();
+    `);
+    await see(
+        `return JSON.stringify(document.querySelector(".board-detail-name")?.textContent === "slow" && (await import("/store.js")).store.state.board === "subagents")`,
+        "the selected subagent's detail, on the board",
+    );
+
+    const slow = await inPage<number>(
+        `return JSON.stringify(Number([...document.querySelectorAll(".board-live .agent-tile")].find((tile) => tile.textContent.includes("slow")).dataset.peek))`,
+    );
+
+    // A double click opens it: the first click picks it, the second leaves the board for its conversation.
+    await settled();
+    await page.evaluate(`
+        const tile = [...document.querySelectorAll(".board-live .agent-tile")].find((tile) => tile.textContent.includes("slow"));
+        tile.click();
+        tile.click();
+    `);
+    await see(
+        `return JSON.stringify(location.pathname === "/s/${slow}" && (await import("/store.js")).store.state.board === false)`,
+        "a double click to open the subagent",
+    );
+});
+
+test(
+    "a person's message that looks like a report is theirs: a steer in the queue, a message in the conversation",
+    real,
+    async () => {
+        const id = await started(6);
+        const lookalike = "[subagent zed answered, no reply needed] this is my own message";
+
+        await says(".queued-mode", /^Report/);
+        await app.commands.submit(id, owner(app), {
+            text: lookalike,
+            requestId: `own-${id}`,
+            mode: "steer",
+        });
+        await see(
+            `return JSON.stringify([...document.querySelectorAll(".queued")].some((row) => row.textContent.includes("this is my own message") && row.querySelector(".queued-mode").textContent.trim().startsWith("Steer")))`,
+            "the look-alike as a steer",
+        );
+        // Once HADAL has it, it shows as the person's message, not as a report card.
+        await see(
+            `return JSON.stringify([...document.querySelectorAll(".prompt")].some((prompt) => prompt.textContent.includes("this is my own message")))`,
+            "the look-alike as a message",
+            20_000,
+        );
+        assert.equal(
+            await inPage<boolean>(
+                `return JSON.stringify([...document.querySelectorAll(".report-name")].some((name) => name.textContent === "zed"))`,
+            ),
+            false,
+        );
+    },
+);
+
+test(
+    "a working subagent shows its model in the top bar on a phone, where the composer hides it; a tap opens the model sheet",
+    real,
+    async () => {
+        const id = await started(0);
+
+        await until(
+            async () =>
+                (await app.harness.snapshot(SubagentsDoc, id, context))?.agents.slow !== undefined,
+            "the slow subagent",
+        );
+
+        const slow = (await app.harness.snapshot(SubagentsDoc, id, context))!.agents.slow!;
+
+        assert.equal(await textOf(".topbar .title-model"), null);
+        await page.navigate(`${base}/s/${slow.conversationId}`);
+        await see(
+            `return JSON.stringify(document.querySelector(".composer.busy textarea") !== null)`,
+            "the working subagent",
+            20_000,
+        );
+        // The composer's chip is hidden while it works (a phone), so the top bar has to say the model.
+        assert.equal(
+            await inPage<string>(
+                `return JSON.stringify(getComputedStyle(document.querySelector(".composer .model-chip")).display)`,
+            ),
+            "none",
+        );
+        await see(
+            `const tag = document.querySelector(".topbar .title-model"); return JSON.stringify(tag !== null && tag.getBoundingClientRect().width > 0 && tag.textContent.trim() !== "")`,
+            "the model tag in the top bar",
+        );
+        // Its tap target reaches 8 px past it (::after), so the visible boxes are compared, not scrollWidth.
+        assert.equal(
+            await inPage<boolean>(
+                `const sub = document.querySelector(".topbar .title-sub").getBoundingClientRect(); const tag = document.querySelector(".topbar .title-model").getBoundingClientRect(); return JSON.stringify(tag.left >= sub.left - 1 && tag.right <= sub.right + 1 && sub.right <= innerWidth)`,
+            ),
+            true,
+        );
+        await settled();
+        await page.click({ selector: ".topbar .title-model" });
+        await see(
+            `return JSON.stringify((await import("/store.js")).store.state.sheet?.type === "model")`,
+            "the model sheet",
+        );
+    },
+);
+
+test(
+    "Running now is a board in the conversation's place: a timeline, the sessions with what runs and what is scheduled, and Cancel",
+    real,
+    async () => {
+        const id = await started(0);
+        const schedule = await app.commands.schedule(id, owner(app), {
+            when: "every 2h look at the queue",
+            zone: "UTC",
+        });
+
+        await page.setViewport(VIEWPORTS.desktop);
+        await settled();
+        await page.click({ selector: ".rail-running" });
+        await see(
+            `return JSON.stringify((await import("/store.js")).store.state.board === "running" && document.querySelector(".running-board") !== null)`,
+            "the Running now board",
+        );
+        await see(
+            `return JSON.stringify(document.querySelectorAll(".rb-timeline .rb-pin.repeat").length > 1)`,
+            "the repeat's times on the timeline",
+        );
+        await says(".rb-sched", /look at the queue.*every 2 hours/);
+
+        // A schedule picked shows at the side, with its next times; Cancel ends it.
+        await settled();
+        await page.click({ selector: ".rb-sched" });
+        await says("[data-part='running-schedule'] .rb-message", /look at the queue/);
+        assert.ok(
+            (await inPage<number>(
+                `return JSON.stringify(document.querySelectorAll("[data-part='running-schedule'] .rb-upcoming span").length)`,
+            )) > 1,
+        );
+        await settled();
+        await page.click({ selector: "[data-part='running-schedule'] .button.danger" });
+        await see(
+            `return JSON.stringify(document.querySelector(".rb-sched") === null)`,
+            "the schedule gone",
+        );
+        assert.equal(
+            (await app.schedules.list(id)).some((each) => each.id === schedule.id),
+            false,
+        );
+
+        // Esc goes back to the conversation; the old sheet's name opens the board too.
+        await page.evaluate(
+            `document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); return "true"`,
+        );
+        await see(
+            `return JSON.stringify((await import("/store.js")).store.state.board === false)`,
+            "the board closed",
+        );
+        await page.evaluate(
+            `(await import("/store.js")).openSheet({ type: "running" }); return "true"`,
+        );
+        await see(
+            `return JSON.stringify((await import("/store.js")).store.state.board === "running" && (await import("/store.js")).store.state.sheet === null)`,
+            "the board, for the old sheet",
+        );
+    },
+);
+
+test(
+    "Running now: a repeat past its last time listed goes on as a dashed line, and only its first time is a tab stop",
+    real,
+    async () => {
+        const id = await newSession(app);
+        const schedule = await app.commands.schedule(id, owner(app), {
+            when: "every 30m check the build",
+            zone: "UTC",
+        });
+
+        await page.setViewport(VIEWPORTS.desktop);
+        await page.navigate(`${base}/s/${id}`);
+        await settled();
+        await page.click({ selector: ".rail-running" });
+        await see(
+            `return JSON.stringify(document.querySelectorAll(".rb-timeline .rb-pin.repeat").length > 1)`,
+            "the repeat's times on the timeline",
+        );
+        // The server lists 24 times, 12 hours of them: the 7-day range goes on past the last one.
+        await page.click({ selector: ".rb-range button:last-child" });
+        await see(
+            `return JSON.stringify(document.querySelectorAll(".rb-timeline .rb-pin-tail").length === 1)`,
+            "the dashed line after the last time",
+        );
+        assert.equal(
+            await inPage<number>(
+                `return JSON.stringify(document.querySelectorAll(".rb-timeline button.rb-pin:not([tabindex='-1'])").length)`,
+            ),
+            1,
+        );
+        await app.schedules.cancel(id, schedule.id);
+    },
+);

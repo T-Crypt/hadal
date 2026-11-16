@@ -1,0 +1,245 @@
+// What the server tests share: an isolated HADAL install and data folder, a scripted model, and small helpers. Import
+// this before anything from src/: it points HADAL's config at a temporary folder first.
+import { home, root, work } from "./isolate.ts";
+import { rmSync } from "node:fs";
+import { join } from "node:path";
+import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
+import type { FauxResponseStep } from "@earendil-works/pi-ai";
+import { fauxAssistantMessage, fauxProvider, fauxText } from "@earendil-works/pi-ai/providers/faux";
+import { type ConversationId, UsageDoc } from "@earendil-works/pi-durable";
+import type { Attachment } from "../src/server/commands.ts";
+import type { User } from "../src/server/config.ts";
+import type { LimitTuning } from "../src/server/limit-gate.ts";
+import { SENT_STAMP } from "../src/server/sent-at.ts";
+import type { Client } from "../src/server/room.ts";
+import { PocketApp } from "../src/server/app.ts";
+
+export { home, root, work };
+
+export const context = BACKGROUND_CONTEXT;
+
+export type App = Awaited<ReturnType<typeof PocketApp.open>>;
+
+/** The text of the newest message a model request carries, and who sent it, without the time it was sent. */
+export function lastText(context: { messages: readonly { role: string; content: unknown }[] }): {
+    role: string;
+    text: string;
+} {
+    const last = context.messages.findLast((message) => message.role !== "system")!;
+    const content =
+        typeof last.content === "string"
+            ? [{ type: "text", text: last.content }]
+            : (last.content as { type: string; text?: string }[]);
+
+    return {
+        role: last.role,
+        text: content
+            .flatMap((part) => (part.type === "text" ? [part.text ?? ""] : []))
+            .join("")
+            .replace(SENT_STAMP, ""),
+    };
+}
+
+/** Echoes the last message: enough for tests that do not care what HADAL says. */
+export const echo: FauxResponseStep = (context) =>
+    fauxAssistantMessage([fauxText(`echo: ${lastText(context as never).text}`)]);
+
+/** A scripted provider, "faux", that answers every request with `route`. */
+export function scriptedModel(route: FauxResponseStep = echo) {
+    const faux = fauxProvider({
+        tokensPerSecond: 2000,
+        models: [
+            { id: "faux-1" },
+            { id: "faux-2" },
+            { id: "faux-vision", input: ["text", "image"] },
+            { id: "faux-native" },
+        ],
+    });
+
+    // A model whose provider takes tool changes in the messages, as Claude 4.8 and 5 and later do.
+    Object.assign(faux.getModel("faux-native")!, {
+        compat: { supportsMidConvoSystemMessages: true, supportsMidConvoToolChanges: true },
+    });
+
+    // Plenty: a test file of many subagents (each of whose turns takes one) used 200 up.
+    faux.setResponses(Array.from({ length: 1000 }, () => route));
+
+    return faux;
+}
+
+/** Open the app on `dataDir` with the scripted model. Opening the same folder again is a restart; `now` moves its clock. */
+export function openApp(
+    model: ReturnType<typeof scriptedModel>,
+    dataDir = join(root, "data"),
+    now?: () => number,
+    limits?: Partial<LimitTuning>,
+): Promise<App> {
+    return PocketApp.open({
+        dataDir,
+        defaultCwd: work,
+        supervised: false,
+        log: () => {},
+        configureModels: (models) => models.registerNativeProvider(model.provider),
+        home,
+        ...(now === undefined ? {} : { now }),
+        ...(limits === undefined ? {} : { limits }),
+    });
+}
+
+/**
+ * Wait until `check` holds, polling. Thirty seconds, not ten: the whole browser suite runs on a loaded two-core
+ * runner, where a freshly launched browser answered its first page at 10.6 s and the same wait timed out at 13.9 s.
+ * The budget only decides how long a wait that is going to fail takes to fail.
+ *
+ * A `check` that cannot run is "not yet", not a failure. A page signs in at `/login`, which serves no import map, and
+ * then moves to the app; a first poll that imports a module in the moment before that move throws over the bare
+ * `preact` it cannot resolve, which is a page still loading, and the last such error is what a timeout reports.
+ */
+export async function until(
+    check: () => Promise<boolean> | boolean,
+    what: string,
+    timeoutMs = 30_000,
+): Promise<void> {
+    const started = Date.now();
+    let last: unknown;
+
+    for (;;) {
+        try {
+            if (await check()) {
+                return;
+            }
+
+            last = undefined;
+        } catch (error) {
+            last = error;
+        }
+
+        if (Date.now() - started > timeoutMs) {
+            throw new Error(
+                `Timed out waiting for ${what}${last === undefined ? "" : `: ${String(last)}`}`,
+            );
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+}
+
+/** Record `dollars` more of model usage in a conversation, the way a model response does: the scripted model costs nothing. */
+export async function recordCost(app: App, id: ConversationId, dollars: number): Promise<void> {
+    await app.harness.commit(async (tx) => {
+        const usage = await tx.doc(UsageDoc, id);
+
+        usage.models["faux/faux-1"] ??= {
+            input: 0,
+            output: 0,
+            cacheRead: 0,
+            cacheWrite: 0,
+            totalTokens: 0,
+            cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+        };
+        usage.models["faux/faux-1"].cost.output += dollars;
+        usage.models["faux/faux-1"].cost.total += dollars;
+    }, context);
+}
+
+export const owner = (app: App) => app.config.users.find((user) => user.role === "owner")!;
+
+/** A session in `cwd` with the scripted model, no thinking. */
+export async function newSession(app: App, cwd = work): Promise<ConversationId> {
+    // New sessions start with a model someone picked, and none when nobody did: as if the owner picked this one before.
+    app.config.lastModel ??= { provider: "faux", modelId: "faux-1", thinkingLevel: "off" };
+    const { id } = await app.commands.createSession(owner(app), { cwd });
+
+    await app.commands.configure(id, owner(app), {
+        model: { provider: "faux", modelId: "faux-1" },
+        thinkingLevel: "off",
+    });
+
+    return id;
+}
+
+export async function loadTools(app: App, id: ConversationId, ...names: string[]): Promise<void> {
+    await (
+        await app.conversation(id)
+    ).configure(
+        { modelTools: { remove: [], add: names.map((name) => ({ name })) } } as never,
+        context,
+    );
+}
+
+/**
+ * Offer `subagent` in each session that `app` starts from now on, as if HADAL had loaded it: it waits for tool search
+ * (`tool-search.ts`), and the scripted HADAL of these tests calls it at once.
+ */
+export function offerSubagents(app: App): void {
+    const create = app.commands.createSession.bind(app.commands);
+
+    app.commands.createSession = async (...args: Parameters<typeof create>) => {
+        const created = await create(...args);
+
+        await loadTools(app, created.id, "subagent");
+
+        return created;
+    };
+}
+
+/** Send a message as the owner and wait for HADAL's answer. */
+export async function say(
+    app: App,
+    id: ConversationId,
+    text: string,
+    attachments?: Attachment[],
+): Promise<void> {
+    const { submissionId } = await app.commands.submit(id, owner(app), {
+        text,
+        requestId: crypto.randomUUID(),
+        ...(attachments === undefined ? {} : { attachments }),
+    });
+
+    await (await app.harness.submission(submissionId, context))!.wait(context);
+}
+
+/** The texts of a conversation's entries as the model sees them, oldest first. */
+export async function modelTexts(app: App, id: ConversationId): Promise<string[]> {
+    const view = await (await app.harness.conversation(id, context))!.context(context);
+
+    return view.messages.map((message) => JSON.stringify(message.content));
+}
+
+/** A browser tab as the app sees it, recording every event it is sent. Attach it with `app.attach(tab.client)`. */
+export function fakeTab(id: ConversationId | undefined, user: User, protocol = 2) {
+    const events: { event: string; data: Record<string, unknown> }[] = [];
+    const client: Client = {
+        id: `tab-${crypto.randomUUID()}`,
+        connection: `connection-${crypto.randomUUID()}`,
+        user,
+        conversationId: id,
+        protocol,
+        sentEntries: new Set<number>(),
+        orderKey: "",
+        send: (event: string, data: unknown) =>
+            events.push({ event, data: data as Record<string, unknown> }),
+    };
+    const last = (event: string) => events.findLast((each) => each.event === event)?.data;
+    /** A view field as a browser has it: updates leave out the fields that did not change. */
+    const field = (name: string) =>
+        events.findLast((each) => each.event === "view" && name in each.data)?.data[name];
+
+    return { client, events, last, field };
+}
+
+/**
+ * Remove the temporary folder: call from `after`, once the app is closed. A browser that has just been closed can
+ * still be writing its profile, so a sweep can find the folder refilled. Node's own retry stays on the same `rmdir`
+ * and re-reads nothing, so one file written after its single sweep fails every attempt; every attempt here sweeps a
+ * freshly read tree, and the pause between attempts lets the browser finish.
+ */
+export function cleanUp(): void {
+    // A browser's helper processes can still write to its profile here for a moment after it closes: retry, and a
+    // folder that stays only warns, so a slow exit does not fail the file.
+    try {
+        rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    } catch (error) {
+        console.warn(`Could not remove ${root}: ${(error as Error).message}`);
+    }
+}

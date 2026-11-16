@@ -1,0 +1,170 @@
+# Changing how HADAL works, without code
+
+Most changes that people ask for need no code: "always use pnpm", "review the way we do it here", "never touch the migrations". HADAL reads the same files as its terminal app, except the terminal app's extensions ([below](#the-terminal-apps-extensions-and-packages)). So what you write for the terminal app works here too, and the other way round. The terminal app's own documentation tells all about each file; the system prompt gives its path.
+
+## Instructions for one session
+
+Use Menu → **Instructions for HADAL**, or `/instructions use pnpm, not npm`.
+
+- HADAL gets the instructions with each message in that session, after the rest of the system prompt.
+- All the people in the session see them.
+- HADAL stores them with the session, so they stay after restarts. A fork starts with its parent's instructions.
+
+Use them for rules that belong to one piece of work. A tool cannot set them: tell the person what to put there.
+
+## AGENTS.md: rules for a project, or for all sessions
+
+HADAL loads context files as HADAL does:
+
+- `~/.pi/agent/AGENTS.md`: for each session, in any folder.
+- `AGENTS.md` (or `CLAUDE.md`) in the session's folder, and in each folder above it.
+
+HADAL's `configuration.md` gives the full list of names, with `AGENTS.override.md`. HADAL reads the files again at most 30 seconds after they change. The next request has them.
+
+Keep the files short and true. They go with each request, and a rule that HADAL cannot obey is worse than no rule.
+
+## Lantern's instructions
+
+Lantern has no project, so it does not read AGENTS.md files. Write the rules for Lantern in `pip.md` in HADAL's data folder: `~/.hadal/pip.md`, unless `--data` or `HADAL_DIR` names another folder (since 0.28.0).
+
+- Lantern gets the file with each message. When the file changes, the next message has the new text.
+- Only Lantern reads it: sessions, subagents, and HADAL's terminal app do not.
+
+## The language agents write in
+
+Since 0.28.0, agents write to each other in the language of the person they work for: Lantern to the sessions it starts or messages, a session to its linked sessions and its subagents, and each answer back. A session you open later, that Lantern or another session worked in, reads in your language, with no setting. Lantern takes the language from your messages to it, and for a watch, a webhook, or a schedule from the instructions you gave it. In English they write Simplified Technical English (ASD-STE100); in another language, the same short, plain style. Their answers to you follow your own messages, as before. To choose another language for Lantern's messages to sessions, say so in `pip.md`.
+
+## Skills: procedures that HADAL follows on request
+
+A skill is a folder with a `SKILL.md`: a name and a description at the top, and the steps below. Its name and description go into the system prompt. HADAL reads the rest when a task matches it, or when a person sends `/skill:name what to do`.
+
+Put a skill in one of these folders:
+
+- `~/.pi/agent/skills/<name>/` or `~/.agents/skills/<name>/`, for each session.
+- A project's `.pi/skills/` or `.agents/skills/`, for the sessions in that project. A project's `.agents/skills/` counts in the session's folder, and in each folder above it, up to the repository's root.
+- More folders that HADAL's settings add.
+
+When two skills have the same name, the project's skill wins. See HADAL's `skills.md`. As for `AGENTS.md`, HADAL reads skills again within 30 seconds.
+
+### Project trust
+
+A project's `.agents/skills/` load only in a project that HADAL trusts.
+
+- When a session's project has such skills and nobody decided about the project, HADAL asks its owner above the message box.
+- `/trust`, or Menu → **Project trust**, shows the answer and changes it.
+- The answer goes where Pi's CLI keeps its own (`~/.pi/agent/trust.json`). So each app uses what was decided in the other. In the CLI, trust also loads the project's `.pi` settings, extensions, and packages.
+- `"defaultProjectTrust": "always"` (or `"never"`) in `~/.pi/agent/settings.json` answers for each project that nobody decided about.
+- The CLI also asks before a project's `.pi/skills/`. HADAL loads those until you answer "Don't trust", or until `defaultProjectTrust` is `"never"`. Then it leaves them out too.
+- **Not now** (×) puts the question off in that tab.
+
+## Prompt templates: saved messages with blanks
+
+A Markdown file in `~/.pi/agent/prompts/`, or in a project's `.pi/prompts/` (unless HADAL was told not to trust the project), becomes a slash command with its name: `review.md` is `/review`. `$1`, `$2`, … take the words after the command, and `$@` takes all of them. See HADAL's `prompt-templates.md`.
+
+Use a template for a message that people send often. Use a skill for steps that HADAL must know how to do.
+
+## Routers: stages a task runs through
+
+A router (made in the router editor, saved to `~/.hadal/routers/<id>.json`) is the model a session runs on and its stages, in order (`pipeline`): each with an `id`, a `template` (plan, implement, review, fix, ship, custom), its `instructions`, the `skills` it reads first (installed skills, by name), and optionally a `model`, a `thinking` level, or a `role` (an agent definition run in its place). The router's prompt is written from its stages, plus `extra` if set. A session running as a router spawns each stage with `agent: <stage id>`. Router prompt files (`~/.hadal/routers/*.md`, `~/.omp/agent/router/ROUTER*.md`) are listed read-only; their stages are the agent definitions the prompt names in backticks.
+
+## Agent definitions: roles a subagent starts as
+
+A Markdown file in the data folder's `agents/` (`~/.hadal/agents/reviewer.md`) is a role HADAL can start a subagent as: `subagent` spawn with `agent: reviewer`. Simple `key: value` front matter (all optional) sets its `description`, `model` (`provider/modelId`), `thinking` level, and `tools` (comma-separated); the body is its instructions, after the subagent's own. Options given to the spawn win over the file's. Its `model` is used where the session allows it (`/subagents`: on auto, a model on the session's own provider); elsewhere the role runs on the session's model. Their names and descriptions are listed in HADAL's prompt, and each spawn reads the file again, so an edit applies to the next one.
+
+Use one for a role with its own model or rules: a planner on a large model, a reviewer that only reads.
+
+## Models and providers
+
+People sign in to providers in Menu → **Providers**, and pick a model for each session with the model chip in the message box. HADAL uses Pi's sign-ins (`~/.pi/agent/auth.json`) and Pi's list of models. To add an OpenAI-compatible endpoint (LM Studio, Ollama, vLLM, a proxy), the owner taps **Add** on the **OpenAI Compatible** row in Providers: a name, a base URL, an API key (or **No key**), and models picked from the endpoint's list (**Find models**) or typed by hand. HADAL writes the endpoint into HADAL's `models.json`, which it makes, with its folder, when missing, and keeps the key in `auth.json`. **Edit** and **Remove** change it later. A `models.json` with comments, or one HADAL refuses, is left alone. To add another model or provider that HADAL does not know, or the fields the form does not set (headers, compat, costs), add it to `models.json` as HADAL's `models.md` says; the form keeps those fields when it edits the endpoint. A provider that needs code comes as a HADAL drop-in that calls `host.registerModelProvider` ([host.md](extensions/reference/host.md#registermodelprovider)), not as a terminal-app extension: see [the terminal app's extensions and packages](#the-terminal-apps-extensions-and-packages).
+
+**A Claude subscription.** Sign in to Anthropic with it in Providers. Then turn on **Claude subscription billing** in Menu → Extensions → Installed → **Built in**, so that requests count against the plan. It is off by default, and it asks before it turns on. Without it, Anthropic can bill the requests as extra usage, and refuse them when that is used up.
+
+> [!WARNING]
+> **Using a Claude subscription in HADAL is at your own risk.** Anthropic's terms and its help pages disagree on it:
+>
+> - Anthropic's [Consumer Terms](https://www.anthropic.com/legal/consumer-terms) forbid accessing its services "through automated or non-human means, whether through a bot, script, or otherwise", except with an Anthropic API key or where Anthropic explicitly permits it.
+> - Its help pages say that third-party apps can use your subscription limits. Yet its servers often bill such requests as extra usage.
+> - Claude subscription billing makes HADAL's requests look like Claude Code's.
+>
+> Anthropic can change how it counts these requests, refuse them, or act on an account it finds using them. An Anthropic API key, or a model from another provider, has none of these risks.
+
+Models are the person's to choose, never HADAL's: a subagent runs on its session's model unless the session's person allows others with the Subagents chip or `/subagents`, or the owner allows them everywhere under **Models for subagents** at the top of the Providers sheet (none by default), and Lantern passes a model only when its person named it. Instructions, skills, or `AGENTS.md` cannot widen that; tell the person where the setting is instead.
+
+- A subagent runs on its session's model, unless the owner allows models under **Subagent models** in the Providers sheet (a pane on the right on wide screens, at the top on phones). By default, there are none. Once some are allowed, subagents and linked sessions run only on those: on the session's model when it is one of them and HADAL names none, else on a model HADAL chooses from them (HADAL must name one when the session's is not among them).
+- Lantern gives a model only when its person named it.
+
+Instructions, skills, and `AGENTS.md` cannot change this. Tell the person where the setting is instead.
+
+### When a model's context is compacted
+
+HADAL compacts a session's context with HADAL's settings in `~/.pi/agent/settings.json`: `compaction.reserveTokens` (the room kept free: HADAL waits for a compaction above the model's context window minus it, and one starts in the background about 32,000 tokens before that) and `compaction.keepRecentTokens`. Since 0.25.0, `compaction.modelOverrides` gives one model its own values, keyed by `provider/modelId`, for example to compact a model with a large window much earlier:
+
+```json
+{
+    "compaction": {
+        "modelOverrides": { "openai-codex/gpt-6.1-sol": { "reserveTokens": 350000 } }
+    }
+}
+```
+
+Other models keep the general values. With no `compaction.reserveTokens` in HADAL's settings, HADAL gives each model its own reserve instead of Pi Durable's 16,384: room for the whole summary the model can write, up to 32,768 tokens and a quarter of its context window (since 0.28.1). Pi Durable writes a summary in at most 80% of the reserve, thinking included, so the old 13,107 tokens cut off the cumulative summary of a long session, and from then on every run failed. A model with a 200,000-token window and 32,768 output tokens now compacts from about 167,000 tokens (before, about 184,000). A `reserveTokens` of your own, general or in a model's override, wins. An entry that HADAL refuses (not a whole number, or a name with no provider) is left out, and the server log says so. Lantern uses its model's values too. An edit of `settings.json` counts once HADAL reads HADAL's settings again: soon after the next message, or at once with Menu → **Refresh models**. See HADAL's `settings.md` for each setting.
+
+## Project model defaults for new sessions
+
+Menu → **Default model** sets the owner's model and thinking level for the whole app. This always wins. To use project defaults, open that menu and choose **Clear owner default: use project defaults, then last picked**.
+
+In the session folder's `.pi/settings.json`, set both `defaultProvider` and `defaultModel`. You can also set `defaultThinkingLevel`; without it, the level is `off`. For example:
+
+```json
+{
+    "defaultProvider": "anthropic",
+    "defaultModel": "claude-sonnet-4-5",
+    "defaultThinkingLevel": "high"
+}
+```
+
+Use a provider and model ID that HADAL's list of models knows. HADAL limits thinking to the levels that the model has. A project setting with only a thinking level does not change an owner default, or the last picked model and level.
+
+Project defaults need trust:
+
+- Each project with a `.pi/settings.json` can ask, also when it has no model keys. The same decision controls what HADAL's terminal app loads.
+- A project with only settings asks the owner above the message box. **Review**, or Menu → **Project trust**, explains the choice.
+- Until the owner trusts the project, the usual order applies.
+- After trust, only new sessions use project defaults: the open session does not change.
+- No project setting can trust its own project. The decision is shared with HADAL's terminal app. HADAL reads `defaultProjectTrust` only from the terminal app's global settings.
+
+Without an owner default, the order is: a pin from a trusted project, the last picked model, HADAL's global default, and then no model.
+
+- HADAL reads the final folder after it makes a worktree, and fresh global defaults and trust policy, each time it makes a session.
+- A worktree uses the files in that checkout, with the new files that it copied and that git does not ignore. It does not read its source folder separately.
+- Bad JSON, a provider without a model (or a model without a provider), an unknown model, or a wrong thinking level in trusted settings stops the new session with an error. HADAL does not change silently to a different model.
+- A known model without a sign-in stays selected, and its next request shows the sign-in failure.
+- When HADAL cannot read the terminal app's global settings, it also stops a new session without an owner default, with a safe error: it must not guess the trust policy.
+
+Existing sessions do not change when files or folders change. Imports, forks, subagents, models that a person chose, and Lantern's own conversation work as before.
+
+- A model that the person named to Lantern overrides project settings.
+- A session that Lantern starts without a named model uses the same order as each new session, with trusted projects, also when the owner trusts all projects.
+
+**HADAL does not support these yet:** extra skill and prompt paths from each session folder's settings, and run policy per project (compaction, retries, stream timeouts, steering, and follow-up mode). The usual project folders for skills and prompts still work.
+
+## Other switches
+
+These are in the app, not in files. Tell the person where they are. Do not change them in another way.
+
+- **Plan mode** (the Plan chip): HADAL plans, and asks before it changes anything.
+- **Done when** (`/until npm test`): HADAL continues until a check passes.
+- **Scheduled messages** (`/schedule in 2h check the deploy`): a message to HADAL later, or again and again. HADAL has a `schedule` tool for its own messages.
+- **Background tasks**: HADAL's `background` tool runs a command without waiting for it (a dev server, a long test run), reads its output later, and stops it; HADAL gets a message when it ends. Menu → Extensions → Background tasks sets how many may run at once in a session.
+- **Extensions** (Menu → Extensions, for the owner): turn on or off the browser, subagents, codemode, Lancet Guard, a drop-in, and the rest, for all sessions.
+- **Lancet Guard and approvals** (Menu → Extensions): when the guard is on, risky commands wait for a person to allow them. "Approvals need someone else" makes that person another than the one who asked.
+
+See [features.md](features.md) for each of them.
+
+## The terminal app's extensions and packages
+
+HADAL reads the terminal app's sign-ins, models, settings, skills, prompt templates, and AGENTS.md files, but not the terminal app's extensions. It does not load `~/.pi/agent/extensions/`, the `extensions` setting, or the packages of the `packages` setting in the terminal app's `settings.json`. HADAL runs on Pi Durable, and its extensions are of another kind ([extensions.md](extensions.md)). For something that a terminal-app package gives, look in Menu → Extensions: under **Built in**, and in **Discover**.
+
+## When this is not enough
+
+To give HADAL a new tool, add a rule to its prompt that depends on the session's state, or check its tool calls, write an extension: [extensions.md](extensions.md). An extension can also add a page, a rail button, or a route to the app ([Adding to the app](extensions/app.md)).

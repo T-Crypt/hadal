@@ -1,0 +1,324 @@
+/**
+ * Push notifications: who hears about what, and when. HADAL finished, HADAL needs approval, mentions, and chat messages go
+ * to the people who take part in a session, unless they are looking at it or turned that kind off.
+ * Each goes through Web Push to their subscribed devices, and over the live connection to their
+ * embedders (`notifyEmbedders`).
+ */
+import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
+import type { ConversationId } from "@earendil-works/pi-durable";
+import type { PocketApp } from "./app.ts";
+import { AuthorsDoc, ChatDoc } from "./docs.ts";
+import { describe } from "./errors.ts";
+import { entryText, projectEntry, snippet } from "./projection.ts";
+import { span, type WaitView } from "./limit-gate.ts";
+import { DEFAULT_PREFS, type EmbedderMessage, type PushMessage, type PushPrefs } from "./push.ts";
+
+const context = BACKGROUND_CONTEXT;
+
+/** How long a run must stay finished before "HADAL finished" is pushed: a queued follow-up often starts right away. */
+const DONE_DELAY_MS = 3000;
+/**
+ * A call is offered for allowing from a notification only when all of it shows there, collapsed: one short line. A
+ * longer one could hide its risky part below the fold; it opens the app instead. Denying is always offered.
+ */
+const MAX_NOTIFIED_CALL = 120;
+/** Characters that break a line, are invisible, or reorder text: a call with any of them may not read as it runs. */
+const DISGUISING = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u;
+
+export class Alerts {
+    readonly #app: PocketApp;
+    readonly #doneTimers = new Map<ConversationId, NodeJS.Timeout>();
+    /** Approvals already announced, so each one is pushed once. */
+    #approvalIds = new Set<string>();
+
+    constructor(app: PocketApp) {
+        this.#app = app;
+    }
+
+    /**
+     * Push to one person about a conversation, unless they cannot see it, turned that kind off, or
+     * are looking at it. `call` is an approval's whole call, for embedders, which show it as
+     * their settings say.
+     */
+    async push(
+        userId: string,
+        id: ConversationId,
+        kind: keyof PushPrefs,
+        message: PushMessage,
+        urgency: "normal" | "high" = "normal",
+        call?: { text: string; may: boolean },
+    ): Promise<void> {
+        const app = this.#app;
+        const store = app.pushStore;
+        const user = app.config.userById(userId);
+
+        if (user === undefined || !app.canSee(user, id)) {
+            return;
+        }
+
+        if (!(store?.prefs(userId) ?? DEFAULT_PREFS)[kind] || app.watching(userId, id)) {
+            return;
+        }
+
+        const { approval, ...rest } = message;
+        const embedded: EmbedderMessage = { ...rest, urgency };
+
+        if (approval !== undefined) {
+            embedded.approval = {
+                ...approval,
+                may: call?.may ?? approval.allow,
+                call: call?.text ?? message.body,
+            };
+        }
+
+        app.notifyEmbedders(userId, embedded);
+
+        if (store === undefined || store.subscriptions(userId).length === 0) {
+            return;
+        }
+
+        // Push services want a real contact; Apple rejects placeholders. A tunnel's https address will do.
+        const subject = app.access?.url?.startsWith("https://") ? app.access.url : undefined;
+
+        await store.notify(userId, message, {
+            urgency,
+            ...(subject === undefined ? {} : { subject }),
+        });
+    }
+
+    /**
+     * A run started or ended. "HADAL finished" goes out once it has stayed finished for a moment. `failure`: the run failed
+     * with this line (`app.ts` `failureText`), also when no answer of HADAL's says so, as when its compaction failed.
+     */
+    runChanged(id: ConversationId, busy: boolean, failure?: string): void {
+        clearTimeout(this.#doneTimers.get(id));
+        this.#doneTimers.delete(id);
+
+        if (busy || this.#app.sessionMeta(id) === undefined || this.#quiet()) {
+            return;
+        }
+
+        const timer = setTimeout(() => {
+            this.#doneTimers.delete(id);
+            void this.#pushDone(id, failure).catch((error: unknown) =>
+                this.#app.log(`push failed: ${describe(error)}`),
+            );
+        }, DONE_DELAY_MS);
+
+        timer.unref();
+        this.#doneTimers.set(id, timer);
+    }
+
+    async #pushDone(id: ConversationId, failure?: string): Promise<void> {
+        const app = this.#app;
+
+        if (app.isBusy(id)) {
+            return;
+        }
+
+        const conversation = await app.harness.conversation(id, context);
+
+        if (conversation === undefined) {
+            return;
+        }
+
+        const page = await conversation.entries({}, 12, undefined, context);
+        const last = page.items
+            .map((entry) => projectEntry(entry))
+            .find((entry) => entry?.kind === "assistant");
+
+        // A run that failed before any answer (its compaction failed, its model is gone) leaves the last answer as it
+        // was: the failure says what happened, not that answer.
+        if (
+            failure === undefined &&
+            (last?.kind !== "assistant" || last.stopReason === "aborted")
+        ) {
+            return;
+        }
+
+        const title = await app.conversationTitle(id);
+        const failed = failure !== undefined || last?.stopReason === "error";
+        const answer = last?.kind === "assistant" ? last : undefined;
+        // Lantern's answers open its panel, over whatever the app shows, rather than a session.
+        const pip = app.sessionMeta(id)?.pip !== undefined;
+        const message: PushMessage = {
+            title: pip
+                ? title
+                : failed
+                  ? `HADAL stopped with an error · ${title}`
+                  : `HADAL finished · ${title}`,
+            body: snippet(
+                failure ??
+                    (failed
+                        ? (answer?.error ?? "The model request failed.")
+                        : (answer === undefined ? "" : entryText(answer)) || "Done."),
+                400,
+            ),
+            url: pip ? "/?pip=1" : `/s/${String(id)}`,
+            tag: `done-${String(id)}`,
+        };
+
+        for (const userId of await this.participants(id)) {
+            // Their Lantern follows this run and tells them what came of it: one notification, not two.
+            if (!pip && (await app.pip.reportsOn(id, userId).catch(() => false))) {
+                continue;
+            }
+
+            // A failure waits for a person: it goes out at once, also to a phone that saves its battery.
+            void this.push(userId, id, "done", message, failed ? "high" : "normal");
+        }
+    }
+
+    /**
+     * A run began to wait a long while for its provider's limit to clear: one push to the people in its session, who may
+     * want to come back at the time, or stop it. When the run ends, "HADAL finished" goes as always.
+     */
+    limitWait(conversationId: number, view: WaitView): void {
+        const app = this.#app;
+        const id = conversationId as unknown as ConversationId;
+        const root = app.rootOf(id);
+
+        if (this.#quiet() || app.sessionMeta(root) === undefined) {
+            return;
+        }
+
+        void (async () => {
+            const title = await app.conversationTitle(root);
+            const who = app.sessionMeta(root)?.pip === undefined ? "" : "Lantern: ";
+            const message: PushMessage = {
+                title: `Waiting for a usage limit · ${who}${title}`,
+                body: snippet(
+                    `${view.reason}. HADAL tries again in ${span(view.until - Date.now())} and goes on by itself. Open the session to try now or stop.`,
+                    400,
+                ),
+                url: app.sessionMeta(root)?.pip === undefined ? `/s/${String(root)}` : "/?pip=1",
+                tag: `limit-${String(root)}`,
+            };
+
+            for (const userId of await this.participants(root)) {
+                const user = app.config.userById(userId);
+
+                if (user !== undefined && user.role !== "viewer") {
+                    void this.push(userId, root, "limit", message);
+                }
+            }
+        })().catch((error: unknown) => app.log(`push failed: ${describe(error)}`));
+    }
+
+    /** New approvals go out to everyone in the session who can answer them. */
+    announceApprovals(): void {
+        const app = this.#app;
+        const pending = app.approvals.all();
+        const fresh = pending.filter((approval) => !this.#approvalIds.has(approval.id));
+
+        this.#approvalIds = new Set(pending.map((approval) => approval.id));
+
+        if (this.#quiet()) {
+            return;
+        }
+
+        for (const approval of fresh) {
+            void (async () => {
+                const root = app.rootOf(approval.conversationId);
+                const title = await app.conversationTitle(root);
+                const call = `${approval.tool}: ${approval.subject}`;
+                const shown =
+                    !DISGUISING.test(approval.subject) && call.length <= MAX_NOTIFIED_CALL;
+                let people = await this.participants(root);
+
+                if (people.size === 0) {
+                    people = new Set(app.config.users.map((each) => each.id));
+                }
+
+                for (const userId of people) {
+                    const user = app.config.userById(userId);
+
+                    if (user === undefined || user.role === "viewer") {
+                        continue;
+                    }
+
+                    // An ask goes to the person who answers it, and is answered in the app: its fields need typing.
+                    if (approval.form !== undefined) {
+                        if (app.cannotAllow(user, approval) === undefined) {
+                            void this.push(
+                                userId,
+                                approval.conversationId,
+                                "approval",
+                                {
+                                    title: `HADAL asks you · ${title}`,
+                                    body: snippet(
+                                        !approval.form.fields.some((field) => field.choices)
+                                            ? approval.form.title
+                                            : `${approval.form.title}: ${approval.reason}`,
+                                        400,
+                                    ),
+                                    url: `/s/${String(approval.conversationId)}`,
+                                    tag: `approval-${approval.id}`,
+                                },
+                                "high",
+                            );
+                        }
+
+                        continue;
+                    }
+
+                    const may = app.cannotAllow(user, approval) === undefined;
+                    const message: PushMessage = {
+                        title: `HADAL needs approval · ${title}`,
+                        body: snippet(call, 400),
+                        url: `/s/${String(approval.conversationId)}`,
+                        tag: `approval-${approval.id}`,
+                        approval: { id: approval.id, allow: shown && may },
+                    };
+
+                    void this.push(userId, approval.conversationId, "approval", message, "high", {
+                        text: call,
+                        may,
+                    });
+                }
+            })().catch((error: unknown) => app.log(`push failed: ${describe(error)}`));
+        }
+    }
+
+    /**
+     * Nobody can get a notification: push is off on this server, and no embedder is connected.
+     */
+    #quiet(): boolean {
+        return this.#app.pushStore === undefined && !this.#app.hasEmbedders();
+    }
+
+    /** People who take part in a session: whoever started it, wrote to HADAL, or chatted there. */
+    async participants(id: ConversationId): Promise<Set<string>> {
+        const app = this.#app;
+        const root = app.rootOf(id);
+        const people = new Set<string>();
+        const createdBy = app.sessionMeta(root)?.createdBy;
+
+        if (createdBy !== undefined) {
+            people.add(createdBy);
+        }
+
+        for (const userId of Object.values(
+            (await app.harness.snapshot(AuthorsDoc, root, context))?.entries ?? {},
+        )) {
+            people.add(userId);
+        }
+
+        for (const message of (await app.harness.snapshot(ChatDoc, root, context))?.messages ??
+            []) {
+            if (message.kind !== "event") {
+                people.add(message.userId);
+            }
+        }
+
+        return people;
+    }
+
+    close(): void {
+        for (const timer of this.#doneTimers.values()) {
+            clearTimeout(timer);
+        }
+
+        this.#doneTimers.clear();
+    }
+}

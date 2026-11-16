@@ -162,7 +162,8 @@ export function HostRunsSheet() {
                 data-part="host-runs-more"
                 onClick=${() => setLimit(limit + PAGE)}
             >
-                Show ${Math.min(PAGE, newest.length - visible.length)} older runs
+                Show ${Math.min(PAGE, newest.length - visible.length)}
+                ${Math.min(PAGE, newest.length - visible.length) === 1 ? "older run" : "older runs"}
             </button>`
         }
         ${

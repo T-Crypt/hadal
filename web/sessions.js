@@ -2910,21 +2910,8 @@ function Rail({ foldable = false, folded = false }) {
             </button>`
         }
         ${folded && html`<${RailTiles} />`}
-        ${foldable && html`<${PeeksRailButton} />`}
+        <div class="rail-place" data-part="rail-place" data-place="agents" role="group" aria-label="Agents">
         <${PipRailButton} />
-        <button
-            class=${`rail-button rail-running ${busy > 0 ? "lit" : ""} ${board === "running" ? "open" : ""}`}
-            data-part="rail-button"
-            data-state=${railState(board === "running", busy > 0)}
-            title="Running now"
-            aria-label=${busy > 0 ? `Running now, ${busy}` : "Running now"}
-            aria-pressed=${board === "running"}
-            onPointerDown=${() => board !== "running" && prefetchRunning().catch(() => undefined)}
-            onClick=${toggleRunning}
-        >
-            <${Icon} name="pulse" size=${19} />
-            ${busy > 0 && html`<span class="rail-count">${busy}</span>`}
-        </button>
         <button
             class=${`rail-button rail-agents ${live > 0 ? "lit" : ""} ${board === "subagents" ? "open" : ""}`}
             data-part="rail-button"
@@ -2959,6 +2946,22 @@ function Rail({ foldable = false, folded = false }) {
         >
             <${Icon} name="route" size=${18} />
         </button>
+        </div>
+        <div class="rail-place" data-part="rail-place" data-place="activity" role="group" aria-label="Activity">
+        <button
+            class=${`rail-button rail-running ${busy > 0 ? "lit" : ""} ${board === "running" ? "open" : ""}`}
+            data-part="rail-button"
+            data-state=${railState(board === "running", busy > 0)}
+            title="Running now"
+            aria-label=${busy > 0 ? `Running now, ${busy}` : "Running now"}
+            aria-pressed=${board === "running"}
+            onPointerDown=${() => board !== "running" && prefetchRunning().catch(() => undefined)}
+            onClick=${toggleRunning}
+        >
+            <${Icon} name="pulse" size=${19} />
+            ${busy > 0 && html`<span class="rail-count">${busy}</span>`}
+        </button>
+        ${foldable && html`<${PeeksRailButton} />`}
         <button
             class="rail-button"
             data-part="rail-button"
@@ -2969,7 +2972,23 @@ function Rail({ foldable = false, folded = false }) {
         >
             <${Icon} name="artifact" size=${19} />
         </button>
+        </div>
+        <div class="rail-place" data-part="rail-place" data-place="capabilities" role="group" aria-label="Capabilities">
+        ${
+            me?.role === "owner" &&
+            html`<button
+                class="rail-button"
+                data-part="rail-button"
+                title="Model providers"
+                aria-label="Providers"
+                onClick=${() => openSheet({ type: "providers" })}
+            >
+                <${Icon} name="key" size=${19} />
+            </button>`
+        }
         <${ExtensionRailButtons} />
+        </div>
+        <div class="rail-place rail-foot" data-part="rail-place" data-place="you" role="group" aria-label="You">
         ${
             collab()
                 ? html`<button
@@ -2991,18 +3010,6 @@ function Rail({ foldable = false, folded = false }) {
                     <${Icon} name="users" size=${19} />
                 </button>`
         }
-        ${
-            me?.role === "owner" &&
-            html`<button
-                class="rail-button"
-                data-part="rail-button"
-                title="Model providers"
-                aria-label="Providers"
-                onClick=${() => openSheet({ type: "providers" })}
-            >
-                <${Icon} name="key" size=${19} />
-            </button>`
-        }
         <button
             class="rail-button"
             data-part="rail-button"
@@ -3021,6 +3028,7 @@ function Rail({ foldable = false, folded = false }) {
         >
             ${me && html`<${Avatar} person=${store.state.users.find((each) => each.id === me.id) ?? me} size=${30} />`}
         </button>
+        </div>
     </nav>`;
 }
 

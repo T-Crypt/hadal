@@ -63,7 +63,40 @@ export default defineConfig({
         starlight({
             title: "HADAL docs",
             description:
-                "Extend HADAL: give Pi tools, rules, and checks, and add pages, buttons, and commands to the app.",
+                "How HADAL works and how to extend it: the tour, the parts and how a message moves through them, running it on a server, and the extension API.",
+            // A shared docs link gets the same card as the landing page; a phone gets the right chrome colour.
+            head: [
+                {
+                    tag: "meta",
+                    attrs: {
+                        property: "og:image",
+                        content: "https://t-crypt.github.io/hadal/og.png",
+                    },
+                },
+                {
+                    tag: "meta",
+                    attrs: {
+                        name: "twitter:image",
+                        content: "https://t-crypt.github.io/hadal/og.png",
+                    },
+                },
+                {
+                    tag: "meta",
+                    attrs: {
+                        name: "theme-color",
+                        content: "#0a1014",
+                        media: "(prefers-color-scheme: dark)",
+                    },
+                },
+                {
+                    tag: "meta",
+                    attrs: {
+                        name: "theme-color",
+                        content: "#eef1f4",
+                        media: "(prefers-color-scheme: light)",
+                    },
+                },
+            ],
             logo: { src: "./public/icon.svg", alt: "" },
             favicon: "/icon.svg",
             social: [

@@ -13,7 +13,7 @@ export type IconColors = { frame: string; card: string; ring1: string; ring2: st
  * and `ring2` keep the stored five-color format and are not drawn.
  */
 export const APP_ICON: IconColors = {
-    frame: "#050D19",
+    frame: "#0A1014",
     card: "#65D9FF",
     ring1: "#33ccff",
     ring2: "#00ff99",

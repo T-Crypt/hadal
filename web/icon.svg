@@ -3,7 +3,7 @@
         HADAL's icon: the mark on the depth, no frame, no gradient. See docs/map.md#icons for the PNG
         regeneration commands.
     -->
-    <rect width="512" height="512" fill="#050D19" />
+    <rect width="512" height="512" fill="#0A1014" />
     <g fill="none" stroke="#E5F1FC" stroke-width="20" stroke-linecap="round" stroke-linejoin="round">
         <path d="M192 168V344" />
         <path d="M320 168V344" />

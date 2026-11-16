@@ -1,9 +1,10 @@
 // The menu: what can be done in this session and in the app.
-import { useLayoutEffect, useRef } from "preact/hooks";
+import { useLayoutEffect, useMemo, useRef } from "preact/hooks";
 import { browserAvailable, displayUrl, setBrowserOpen } from "../browser.js";
 import { chatUnread } from "../chat.js";
 import { schedulesAvailable, triggersOn, watchAvailable, watchPr } from "../commands.js";
 import { extensionMenuItems, safeMode } from "../extension-ui.js";
+import { hostReadout } from "../host-runs.js";
 import { hostMenu } from "../embedder.js";
 import { useChanges } from "../diff.js";
 import { filesAvailable, setFilesOpen } from "../files-panel.js";
@@ -425,6 +426,15 @@ export function MenuSheet({ places = true }) {
     const driving = !turns?.on || turns.driver === me?.id;
     const instructions = view.agent?.instructions;
     const memory = useMemory();
+    // What this session ran, and where: the menu row's hint, and the way into the run log.
+    const ran = useMemo(
+        () => hostReadout(view, { cwd: view.agent?.cwd ?? conversation?.cwd }),
+        [view.entries, view.order, view.agent?.cwd, conversation?.cwd],
+    );
+    const ranHint =
+        ran.summary.total === 0
+            ? "no commands yet"
+            : `${ran.summary.total}${ran.summary.hosts.length === 0 ? ", here" : `, ${ran.summary.hosts.length} ${ran.summary.hosts.length === 1 ? "host" : "hosts"}`}`;
 
     // The embedder this page runs in adds its own group at the end, below App, under its own title (`embedder.js`).
     const embedder = hostMenu();
@@ -578,6 +588,7 @@ export function MenuSheet({ places = true }) {
             ${collab() ? item("People", () => openSheet({ type: "people" }), me?.role === "viewer" ? "you can view" : "") : item("Sign in another device", () => openSheet({ type: "invite" }))}
             ${collab() && item("Notifications", () => openSheet({ type: "notifications" }), "HADAL finished, approvals, chat")}
             ${item("Running now", openRunning, "everything HADAL is doing")}
+            ${item("Where commands ran", () => openSheet({ type: "hostRuns" }), ranHint)}
             ${view.conversation && item("Background", () => openSheet({ type: "background" }), "what commands print as they run")}
             ${item("Spend", () => openSheet({ type: "spend" }), me?.role === "owner" ? "by person and session, limits" : "yours")}
             ${triggersOn() && me?.role !== "viewer" && item("Webhooks and watches", () => openSheet({ type: "hooks" }), "GitHub, other services")}

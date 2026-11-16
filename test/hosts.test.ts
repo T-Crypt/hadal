@@ -310,17 +310,25 @@ test("the transcript tags a call on another machine with its host", async () => 
         describeCall: (call: { name: string; args?: Record<string, unknown> }) => {
             label: string;
             subject: string;
+            host: { local: boolean; name: string };
         };
     };
 
-    assert.equal(
-        describeCall({ name: "bash", args: { command: "nvidia-smi", host: "gpu" } }).label,
-        "@gpu",
-    );
+    const remote = describeCall({
+        name: "bash",
+        args: { command: "nvidia-smi", host: "gpu" },
+    });
+
+    assert.equal(remote.label, "bash @gpu");
+    assert.deepEqual(remote.host, { local: false, name: "gpu" });
     assert.equal(
         describeCall({ name: "read", args: { path: "a.txt", host: "gpu" } }).label,
         "Read @gpu",
     );
     assert.equal(describeCall({ name: "read", args: { path: "a.txt" } }).label, "Read");
-    assert.equal(describeCall({ name: "bash", args: { command: "ls" } }).label, "");
+    assert.equal(describeCall({ name: "bash", args: { command: "ls" } }).label, "bash");
+    assert.deepEqual(describeCall({ name: "bash", args: { command: "ls" } }).host, {
+        local: true,
+        name: "",
+    });
 });

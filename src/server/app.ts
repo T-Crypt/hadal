@@ -6,7 +6,7 @@
  * What people ask of HADAL lives in `commands.ts`, the people's side of a session in `collab.ts`, push notifications in
  * `alerts.ts`, provider sign-ins in `providers.ts`, and each conversation's shared live view in `room.ts`.
  */
-import { homedir } from "node:os";
+import { homedir, hostname } from "node:os";
 import { isAbsolute, join } from "node:path";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { clampThinkingLevel, type ModelThinkingLevel } from "@earendil-works/pi-ai";
@@ -2978,7 +2978,11 @@ export class PocketApp {
                     : {}),
                 // Other machines HADAL may work on over SSH: the owner's to see and change.
                 ...(user.role === "owner"
-                    ? { hosts: this.config.hosts.map((each) => ({ ...each })) }
+                    ? {
+                          hosts: this.config.hosts.map((each) => ({ ...each })),
+                          // This machine's name, so the run log can say where "here" is.
+                          hostname: hostname(),
+                      }
                     : {}),
                 // This person may have a Lantern, the assistant over every screen (`pip.ts`).
                 pip: this.pip.available(user),

@@ -17,6 +17,7 @@ import { avatarSrc, initials, personColor } from "./avatar.js";
 import { routeSliding } from "./back.js";
 import { browserAvailable, setBrowserOpen } from "./browser.js";
 import { describeCall, describersRevision } from "./calls.js";
+import { callHost, HOST_TOOLS, hostLabel } from "./host-runs.js";
 import { DiffBlock } from "./diff.js";
 import { LinkedSessions } from "./linked-sessions.js";
 import { markdownRevision } from "./markdown-ext.js";
@@ -930,43 +931,56 @@ const MEMORY_WORDS = {
     list: "read its lessons",
 };
 
-/** A call's line: its label (the tool, or a subagent's name) and what it acts on. */
-function stepWords(call) {
+/** How a host is named in a tooltip: its name, and the owner's SSH destination when it is known. */
+function hostTitle(name) {
+    const target = store.state.server?.hosts?.find((each) => each.name === name)?.target;
+
+    return `Runs on ${name}${target === undefined ? "" : ` (${target})`}`;
+}
+
+/** A call's line: its label (the tool, or a subagent's name) and what it acts on, and its host when it leaves this
+ * machine. */
+function stepWords(call, cwd) {
     const args = call.args ?? {};
+    const host = HOST_TOOLS.includes(call.name) ? callHost(call, { cwd }) : null;
+    const withHost = (words) => (host === null || host.local ? words : { ...words, host });
 
     switch (call.name) {
         case "grep":
         case "find":
-            return {
+            return withHost({
                 label: call.name,
                 subject: [args.pattern, args.path].filter(Boolean).join("  "),
-            };
+            });
         case "subagent":
-            return {
+            return withHost({
                 label: args.name ?? "subagent",
                 subject: args.message ? short(args.message) : (args.action ?? ""),
-            };
+            });
         case "browser":
-            return {
+            return withHost({
                 label: "browser",
                 subject: `${args.action ?? ""} ${describeCall(call).subject}`.trim(),
-            };
+            });
         case "memory":
-            return {
+            return withHost({
                 label: MEMORY_WORDS[args.action] ?? "memory",
                 subject: args.text ? short(args.text) : (args.id ?? ""),
-            };
+            });
         case "watch_pr":
-            return { label: "watch PR", subject: [args.action, args.pr].filter(Boolean).join(" ") };
+            return withHost({
+                label: "watch PR",
+                subject: [args.action, args.pr].filter(Boolean).join(" "),
+            });
 
         default: {
             const described = describeCall(call);
 
             // An extension's own words for its tool, or the tool's name.
-            return {
+            return withHost({
                 label: described.own ? described.label : call.name,
                 subject: described.subject,
-            };
+            });
         }
     }
 }
@@ -1229,6 +1243,8 @@ function ToolStep({
     const unrolled = useRef(-Infinity);
     const [full, setFull] = useState(null);
     const view = store.state.view;
+    const cwd = view.agent?.cwd ?? view.conversation?.cwd;
+    const { label, subject, host } = stepWords(call, cwd);
     const decision = decisionOf(view.decisions, call, result);
     const status = callStatus({ result, slot, approval, decision, streaming, canRun, busy });
     // A call that finishes while on screen flashes once.
@@ -1277,6 +1293,19 @@ function ToolStep({
     if (open) {
         const clipped = (call.clipped || result?.clipped || diffClipped) && !full;
         const parts = [];
+
+        if (host !== undefined && host.local !== true) {
+            const target = store.state.server?.hosts?.find(
+                (each) => each.name === host.name,
+            )?.target;
+
+            parts.push(
+                html`<div class="tool-note host-note" data-part="step-host-detail">
+                    <span class="host-tag">${hostLabel(host)}</span>
+                    <span class="muted">${target ?? "another machine"}</span>
+                </div>`,
+            );
+        }
 
         if (
             (call.name === "read" || call.name === "write" || call.name === "edit") &&
@@ -1423,7 +1452,6 @@ function ToolStep({
             ? (details?.conversationId ??
               view.subagents.find((agent) => agent.name === args.name)?.conversationId)
             : undefined;
-    const { label, subject } = stepWords(call);
     // Counted from everything once it is loaded: a long write's lines, a long edit's whole diff.
     const said = outcome({
         call: full?.call ?? call,
@@ -1465,6 +1493,7 @@ function ToolStep({
             >
                 <${StepMark} status=${status} kind=${call.name === "subagent" ? "agent" : ""} />
                 <span class="step-label" data-part="step-label">${label}</span>
+                ${host !== undefined && host.local !== true && html`<span class="step-host" data-part="step-host" title=${hostTitle(host.name)}>${hostLabel(host)}</span>`}
                 <span class="step-subject">${subject}</span>
                 ${
                     said &&
@@ -1653,6 +1682,23 @@ function ActivityGroup({
     }
 
     const all = item.before.length === 0 ? item.steps : [...item.before, ...item.steps];
+    // The other machines this group worked on, in the order it first reached them: folded, its line says where its
+    // calls ran, not only what they did.
+    const cwd = store.state.view.agent?.cwd ?? store.state.view.conversation?.cwd;
+    const hosts = new Map();
+
+    for (const step of all) {
+        if (step.block.type !== "toolCall" || !HOST_TOOLS.includes(step.block.name)) {
+            continue;
+        }
+
+        const host = callHost(step.block, { cwd });
+
+        if (host.local !== true) {
+            hosts.set(host.name, host);
+        }
+    }
+
     // A thought alone is the group's own line, not a step under a line that says the same: it opens to its words,
     // which stay folded until asked for, as a thought on the timeline does.
     const lone = all.length === 1 && all[0].block.type === "thinking" ? all[0] : null;
@@ -1756,6 +1802,18 @@ function ActivityGroup({
         >
             <${Icon} name="chevron" size=${14} class="chev" part="activity-chevron" />
             <span class="activity-summary">${summarize(all, thinking)}</span>
+            ${
+                hosts.size > 0 &&
+                html`<span class="activity-hosts" data-part="activity-hosts">
+                    ${[...hosts.keys()]
+                        .slice(0, 2)
+                        .map(
+                            (name) =>
+                                html`<span class="activity-host" title=${hostTitle(name)}>@${name}</span>`,
+                        )}
+                    ${hosts.size > 2 && html`<span class="activity-host activity-host--more" title=${`Also: ${[...hosts.keys()].slice(2).join(", ")}`}>+${hosts.size - 2}</span>`}
+                </span>`
+            }
             ${failed > 0 && html`<span class="activity-failed">${failed} failed</span>`}
             <${GroupTime} id=${id} start=${start} end=${end} live=${live} />
         </button>

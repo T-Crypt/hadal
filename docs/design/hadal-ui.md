@@ -156,6 +156,35 @@ glide, jumps at once where motion is reduced, and jumps rather than chases a dro
 "to the bottom" button still goes down at once. Measured with the live app and the read-image UI test (the picture
 shows under the closed read, once): check clean, transcript, entry, prompt, browser, design, extension suites green.
 
+### Hosts in the log (2026-11-16)
+
+A session can work on other machines (`hosts.ts`): bash, read, write and edit take an optional `host`, and a workspace
+address (`ssh://gpu/…`) puts a whole session there. The interface now says where each call ran, in the same log language
+as the rest of Bell.
+
+- A call that leaves this machine shows an etched `@gpu` tag after its kind, in the aligned call log and in a folded
+  group's line (two tags, then `+n`). The tag is 10.5px mono, a hairline, the raised ground at 45%, and clips at 11ch
+  rather than pushing the argument out. A local call shows none: this machine is the default, and the run log names it.
+- The readout rail gains a `host` cell between the environment light and the model: the remote host reached most
+  recently, `+n` for the others, the signal while HADAL works there now, and a `!` in the error color when a call there
+  failed. The rail hides it with its extras, so the title keeps its room in a narrow pane; the status line shows the
+  same figure as an etched chip on every width. Both open the run log.
+- **Where commands ran** (`sheets/host-runs.js`) is the trace: the summary filters are the machines (All, here, each
+  host, with counts and failures), the rows are the session's calls newest first, and each row opens its call in the
+  transcript. A row has the state mark, the host, the tool, the argument, the duration, and the time; a failure prints
+  its first line under it. A call with no result after its run is over shows a dash, not a spinner. The host a workspace
+  session runs in is named even when a call gives no `host`. `!` commands are rows too, on this machine. One page is 80
+  rows, with older runs on request.
+- **Hosts** (the owner's sheet) keeps its place and gains the machine's name, mode counts, one plate for the list with a
+  hairline between hosts, mode chips, the last test's time and folder, and **Test all**. The form leads with the ssh
+  details and keeps the mode control.
+
+Measured on the rendered copy at 1440, 960 and 390: no horizontal document overflow; the tag is 37px wide for `@gpu`;
+filter chips are 30px (40px on a coarse pointer); run rows are 38px (40px on a phone); the phone's kind column drops to
+10ch and the result to 30% so the argument keeps room beside the tag. The run log's data is `web/host-runs.js`, pure and
+tested in Node (`test/host-runs.test.ts`); `test/host-runs-ui.test.ts` checks the tags, the group line, the rail, the
+log's rows and its host filter in Chromium, and the phone's status line with the chip.
+
 ## Deferred
 
 - U2 shell: dock, navigator, stage, inspector, command surface (PLAN.md section 4).

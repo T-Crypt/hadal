@@ -1733,6 +1733,30 @@ button.rail-seg {
     background: var(--warn);
 }
 
+/* The host this session reached most recently: a readout cell like the rest, its name clipped when long. */
+.rail-seg--host b {
+    max-width: 12ch;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.rail-seg--host .num {
+    color: var(--faint);
+}
+
+/* A call running there now marks the cell with the signal, as the live line does. */
+.rail-seg--host.on b {
+    color: var(--accent);
+}
+
+.rail-seg--host .failed {
+    color: var(--err);
+}
+
+.rail-seg--host.warn .num {
+    color: var(--warn);
+}
+
 /* The context meter: ten etched steps, the filled ones carrying the signal. */
 .rail-seg .meter {
     display: inline-flex;
@@ -3025,6 +3049,32 @@ button.rail-seg {
     text-overflow: ellipsis;
 }
 
+/* The other machines a folded group worked on: etched tags beside its summary, so its line says where as well as
+ * what. Two at most, then a count; the run log has the rest. */
+.activity-hosts {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    max-width: 40%;
+    overflow: hidden;
+}
+
+.activity-host {
+    flex: none;
+    padding: 1px 5px;
+    border: 1px solid var(--h-line);
+    border-radius: var(--h-r-chip);
+    background: color-mix(in oklab, var(--h-depth-2) 45%, transparent);
+    color: var(--h-ink-2);
+    font: 500 10.5px/1.4 var(--h-mono);
+    white-space: nowrap;
+}
+
+.activity-host--more {
+    color: var(--h-ink-3);
+}
+
 .activity-failed {
     flex: none;
     padding: 1px 7px;
@@ -3199,7 +3249,8 @@ button.rail-seg {
 }
 
 .step-meta {
-    flex: none;
+    flex: 0 1 auto;
+    min-width: 4ch;
     max-width: 40%;
     font: 12px var(--mono);
     color: var(--muted);
@@ -3207,6 +3258,22 @@ button.rail-seg {
     overflow: hidden;
     text-overflow: ellipsis;
     font-variant-numeric: tabular-nums;
+}
+
+/* The machine a call ran on: an etched tag in the log, only for a call that left this one. The argument keeps the
+ * room; the tag clips instead of pushing it out. */
+.step-host {
+    flex: none;
+    max-width: 11ch;
+    padding: 1px 5px;
+    border: 1px solid var(--h-line);
+    border-radius: var(--h-r-chip);
+    background: color-mix(in oklab, var(--h-depth-2) 45%, transparent);
+    color: var(--h-ink-2);
+    font: 500 10.5px/1.4 var(--h-mono);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .step-meta.ok {
@@ -3316,6 +3383,29 @@ button.rail-seg {
     white-space: pre-wrap;
     font-size: 13px;
     color: var(--muted);
+}
+
+/* Under an opened call that left this machine: its host tag and the SSH destination, in one quiet etched line. */
+.tool-note.host-note {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 8px;
+    border: 1px solid var(--h-line);
+    border-radius: var(--h-r-chip);
+    background: color-mix(in oklab, var(--h-depth-2) 35%, transparent);
+    font: 11.5px var(--h-mono);
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+.host-tag {
+    flex: none;
+    padding: 1px 5px;
+    border: 1px solid var(--h-line);
+    border-radius: var(--h-r-chip);
+    color: var(--h-ink-1);
+    font-weight: 500;
 }
 
 .step-body .dv-block {
@@ -5015,6 +5105,60 @@ pre.diff .del {
     animation: pulse 1.4s infinite;
 }
 
+/* Where this session's commands ran: the latest remote host as an etched chip, and how many others. It opens the run
+ * log; the signal marks a call running there now, the warning color a failure. */
+.status-line .hosts-now {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 7px;
+    border: 1px solid var(--h-line);
+    border-radius: var(--h-r-chip);
+    background: color-mix(in oklab, var(--h-depth-2) 45%, transparent);
+    color: var(--h-ink-2);
+    font: inherit;
+    cursor: pointer;
+}
+
+.status-line .hosts-now .icon {
+    flex: none;
+    color: var(--h-ink-3);
+}
+
+.status-line .hosts-now .host-name {
+    font: 500 11px var(--h-mono);
+    color: var(--text);
+}
+
+.status-line .hosts-now .num {
+    color: var(--faint);
+}
+
+.status-line .hosts-now.running {
+    border-color: color-mix(in oklab, var(--h-signal) 38%, transparent);
+}
+
+.status-line .hosts-now.running .icon,
+.status-line .hosts-now.running .host-name {
+    color: var(--accent);
+}
+
+.status-line .hosts-now .failed {
+    color: var(--err);
+    font: 600 11px var(--mono);
+}
+
+.status-line .hosts-now.warn .num {
+    color: var(--warn);
+}
+
+@media (hover: hover) {
+    .status-line .hosts-now:hover {
+        border-color: var(--h-line-strong);
+        color: var(--h-ink-1);
+    }
+}
+
 /* How fast the last answer came, once Appearance turns it on: its two halves spaced like the line's items. */
 .status-line .speed {
     display: inline-flex;
@@ -5031,6 +5175,25 @@ pre.diff .del {
     column-gap: 8px;
 }
 
+/* On a phone the activity's time keeps a readable size, and the readout's controls a thumb's target. */
+@media (max-width: 699px) {
+    .activity-time {
+        font-size: 12px;
+    }
+}
+
+@media (pointer: coarse) {
+    .status-line .context {
+        padding-block: 7px;
+        margin-block: -7px;
+    }
+
+    .status-line .guard,
+    .status-line .background-now {
+        min-height: 30px;
+    }
+}
+
 .status-line[data-short~="words"] .speed {
     column-gap: 1ch;
 }
@@ -5040,6 +5203,7 @@ pre.diff .del {
 .status-line[data-short~="guard"] .guard .word,
 .status-line[data-short~="guard"] .background-now .word,
 .status-line[data-short~="cache"] .cache,
+.status-line[data-short~="hosts"] .hosts-now,
 .status-line[data-short~="wait"] .speed .wait,
 .status-line[data-short~="wait"] .speed.wait-only {
     display: none;
@@ -16349,6 +16513,11 @@ textarea.notes {
     gap: 0;
 }
 
+/* The last group's rows keep a little air under them at the end of the scroll. */
+.nav-menu .sheet-body {
+    padding-bottom: 6px;
+}
+
 .nav-menu :is(.menu-session, .group) {
     margin: 0;
     padding: 6px 6px 8px;
@@ -21837,4 +22006,405 @@ pre.gallery-code {
     background: var(--accent-soft, var(--card));
     color: var(--accent);
     font: 12px var(--mono);
+}
+
+/* ─── Where commands ran: the session's run log ─────────────────────────────────────────────── */
+
+/* The filters are the summary too: one etched chip for each machine, with its count and failures. */
+.host-run-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 2px 0 calc(10px * var(--space-y));
+}
+
+.host-filter {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    min-height: 30px;
+    padding: 0 8px;
+    border: 1px solid var(--h-line);
+    border-radius: var(--h-r-chip);
+    background: transparent;
+    color: var(--h-ink-2);
+    font: 500 11.5px var(--h-mono);
+    cursor: pointer;
+    transition:
+        color var(--h-t-micro) var(--h-ease-out),
+        border-color var(--h-t-micro) var(--h-ease-out),
+        background-color var(--h-t-micro) var(--h-ease-out);
+}
+
+.host-filter .icon {
+    flex: none;
+    color: var(--h-ink-3);
+}
+
+.host-filter .num {
+    color: var(--faint);
+    font-weight: 400;
+}
+
+.host-filter .failed {
+    color: var(--err);
+    font-weight: 500;
+}
+
+/* The host this session reached most recently: a 2px signal edge, not a fill. */
+.host-filter.latest {
+    box-shadow: inset 2px 0 0 var(--h-signal);
+}
+
+.host-filter.on {
+    border-color: var(--h-line-strong);
+    background: color-mix(in oklab, var(--h-depth-2) 70%, transparent);
+    color: var(--h-ink-1);
+}
+
+.host-filter.on .icon {
+    color: var(--h-ink-1);
+}
+
+@media (hover: hover) {
+    .host-filter:not(.on):hover {
+        color: var(--h-ink-1);
+        border-color: var(--h-line-strong);
+    }
+}
+
+.host-run-list {
+    border-top: 1px solid var(--h-line);
+}
+
+.host-run {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    width: 100%;
+    min-height: 38px;
+    padding: 7px 2px;
+    border: 0;
+    border-bottom: 1px solid var(--h-line);
+    border-radius: 0;
+    background: none;
+    text-align: left;
+    cursor: pointer;
+    transition: background-color var(--h-t-micro) var(--h-ease-out);
+}
+
+@media (hover: hover) {
+    .host-run:hover {
+        background: var(--hover);
+    }
+}
+
+.host-run:focus-visible {
+    outline-offset: -2px;
+}
+
+.host-run-line {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+/* How the run went: the same marks and colors the call log uses. */
+.host-run-mark {
+    flex: none;
+    width: 14px;
+    text-align: center;
+    font: 500 12px var(--mono);
+    color: var(--faint);
+}
+
+.host-run-mark.done {
+    color: var(--ok);
+}
+
+.host-run-mark.error {
+    color: var(--err);
+}
+
+.host-run-mark.running {
+    color: var(--signal);
+}
+
+.host-run-mark.stopped {
+    color: var(--faint);
+}
+
+.host-run-host {
+    flex: none;
+    width: 9ch;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font: 500 11.5px var(--mono);
+    color: var(--h-ink-2);
+    white-space: nowrap;
+}
+
+.host-run[data-host="local"] .host-run-host {
+    color: var(--h-ink-3);
+}
+
+.host-run-tool {
+    flex: none;
+    width: 6ch;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font: 600 11.5px var(--mono);
+    color: var(--text);
+    white-space: nowrap;
+}
+
+.host-run-subject {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font: 11.5px var(--mono);
+    color: var(--muted);
+    white-space: nowrap;
+}
+
+.host-run-duration {
+    flex: none;
+    width: 6ch;
+    text-align: right;
+    font: 11px var(--mono);
+    color: var(--faint);
+    font-variant-numeric: tabular-nums;
+}
+
+.host-run-time {
+    flex: none;
+    width: 8ch;
+    text-align: right;
+    font: 11px var(--mono);
+    color: var(--faint);
+    font-variant-numeric: tabular-nums;
+}
+
+.host-run.error .host-run-duration {
+    color: var(--err);
+}
+
+.host-run-error {
+    padding-left: 22px;
+    font: 11.5px var(--mono);
+    color: var(--err);
+    overflow-wrap: anywhere;
+}
+
+.host-runs-note {
+    margin-top: calc(10px * var(--space-y));
+}
+
+/* The host's own sheet: one plate for the list, a line between rows, no card inside the sheet. */
+.host-summary {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 6px 10px;
+    padding: 8px 10px;
+    margin-bottom: calc(10px * var(--space-y));
+    border: 1px solid var(--h-line);
+    border-radius: var(--h-r-surface);
+    background: color-mix(in oklab, var(--h-depth-2) 40%, transparent);
+}
+
+.host-summary-here {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    font: 500 12px var(--mono);
+    color: var(--h-ink-1);
+}
+
+.host-summary-here .icon {
+    color: var(--h-ink-3);
+}
+
+.host-list {
+    border: 1px solid var(--h-line);
+    border-radius: var(--h-r-surface);
+    overflow: hidden;
+}
+
+.host-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 10px 12px;
+}
+
+.host-row + .host-row {
+    border-top: 1px solid var(--h-line);
+}
+
+.host-row[data-mode="off"] {
+    opacity: 0.72;
+}
+
+.host-row-head {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px 8px;
+}
+
+.host-row-name {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font: 500 12.5px var(--mono);
+    color: var(--h-ink-1);
+}
+
+.host-row-name .icon {
+    color: var(--h-ink-3);
+}
+
+.host-mode {
+    padding: 1px 6px;
+    border: 1px solid var(--h-line);
+    border-radius: var(--h-r-chip);
+    font: 500 10.5px var(--mono);
+    text-transform: lowercase;
+}
+
+.host-mode.allow {
+    color: var(--ok);
+    border-color: color-mix(in oklab, var(--ok) 35%, transparent);
+}
+
+.host-mode.ask {
+    color: var(--warn);
+    border-color: color-mix(in oklab, var(--warn) 35%, transparent);
+}
+
+.host-mode.off {
+    color: var(--h-ink-3);
+}
+
+.host-row-actions {
+    display: flex;
+    gap: 2px;
+    margin-left: auto;
+}
+
+.host-where {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px 10px;
+    font: 11.5px var(--mono);
+    color: var(--h-ink-3);
+    overflow-wrap: anywhere;
+}
+
+.host-note-line {
+    font-size: 12.5px;
+    color: var(--h-ink-2);
+    overflow-wrap: anywhere;
+}
+
+.host-test {
+    font: 11.5px var(--mono);
+    color: var(--h-ink-2);
+    overflow-wrap: anywhere;
+}
+
+.host-test.ok {
+    color: var(--ok);
+}
+
+.host-test.err {
+    color: var(--err);
+}
+
+.host-empty {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 16px;
+    border: 1px dashed var(--h-line-strong);
+    border-radius: var(--h-r-surface);
+    color: var(--h-ink-2);
+}
+
+.host-empty .icon {
+    flex: none;
+    color: var(--h-ink-3);
+}
+
+.host-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: calc(12px * var(--space-y));
+}
+
+.host-actions .button {
+    flex: 1;
+}
+
+/* On a phone the run log keeps the host, the tool, the subject, and the time; the duration goes. */
+@media (max-width: 520px) {
+    .host-run-duration {
+        display: none;
+    }
+
+    .host-run-host {
+        width: 7ch;
+    }
+
+    .host-run-tool {
+        width: 5ch;
+    }
+
+    .host-run-time {
+        width: 6ch;
+    }
+
+    .activity-hosts {
+        max-width: 32%;
+    }
+
+    /* The call log gives the kind a narrower column and the result a smaller cap, so the argument keeps its room
+     * beside a host tag. */
+    .step-label {
+        width: 10ch;
+    }
+
+    .step-subject {
+        min-width: 6ch;
+    }
+
+    .step-meta {
+        max-width: 30%;
+    }
+
+    .host-filter,
+    .host-run {
+        min-height: 40px;
+    }
+}
+
+/* A thumb's target on the host rows, as on the rest of the app's controls. */
+@media (pointer: coarse) {
+    .host-row-actions .button {
+        min-height: 40px;
+    }
+
+    .host-filter {
+        min-height: 40px;
+    }
+
+    .status-line .hosts-now {
+        min-height: 34px;
+    }
 }

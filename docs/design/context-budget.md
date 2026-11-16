@@ -67,7 +67,7 @@ only if it keeps or improves cache hits. Pruning that costs the cache is a loss 
 The ask: keep the model's window for reasoning, and hold everything else in the process, ready to re-render into the
 next request when it is asked for.
 
-Most of that already happens: `PocketApp` keeps conversations in memory, read back from `pocket.sqlite` at start, and a
+Most of that already happens: `PocketApp` keeps conversations in memory, read back from `hadal.sqlite` at start, and a
 room projects a window of the newest 50 to 100 entries rather than the whole history. Three concrete additions:
 
 - **A last-read cache per session.** The text of files a session read, keyed by path and mtime, so a re-read after a

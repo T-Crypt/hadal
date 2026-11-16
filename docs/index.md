@@ -7,7 +7,7 @@ These pages are for agents and people who change how HADAL works in HADAL, exten
 - **The code** is in the folder above this one (`web/`, `src/`, `docs/`, `test/`). It runs directly from these files: there is no build.
 - **The data** is in `~/.hadal/`, or in `HADAL_DIR`. The launcher shows it as **Data**.
     - `config.json` has the people, roles, tokens, invites, and settings.
-    - `pocket.sqlite` has all sessions.
+    - `hadal.sqlite` has all sessions.
     - `extensions/` has the owner's drop-in extensions.
     - `themes/` has the owner's themes.
     - Change the data through the app, never in these files: the server keeps them in memory, and writes over them. There are two exceptions: `extensions/`, where drop-ins go ([extensions.md](extensions.md)), and `themes/`, where themes go ([extensions/themes.md](extensions/themes.md)).

@@ -117,7 +117,7 @@ The host's members do not change while modules reload. A new member comes only a
 - The app's HTTP API, other than a module's own routes under `/api/x/<module>/`.
 - The events between the server and its tabs, and the `pocket.*` keys in browser storage.
 - HADAL's document kinds (`pocket.*`), and the shapes of its documents, entries, and tasks. A module can read them with `api.snapshot`, but their fields can change.
-- `config.json`, `pocket.sqlite`, and the rest of the data folder, except `extensions/`.
+- `config.json`, `hadal.sqlite`, and the rest of the data folder, except `extensions/`.
 - All CSS that is not in [CSS](#7-css).
 - The words of errors, notices, logs, and the system prompt.
 - The tools of built-in extensions: their arguments and results. Only their names are public, as reserved names. One exception, since 0.22.0 and experimental: the `browser` tool's `action` and the arguments that name its target (`ref`, `selector`, `label`, `x`, and `y`), so that a hook can guard what HADAL types ([People's values and the browser](../people-values.md)).

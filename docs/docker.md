@@ -32,13 +32,13 @@ The container's entrypoint clears Chromium's stale `Singleton*` locks in `./data
 
 Every folder that matters is a bind mount, so it stays outside the container and outside the image. Change the left-hand side in `.env` to use a folder anywhere on the host.
 
-| Variable           | Default             | In the container   | Holds                                                                                             |
-| ------------------ | ------------------- | ------------------ | ------------------------------------------------------------------------------------------------- |
-| `HADAL_DATA`       | `./data`            | `/data`            | `pocket.sqlite`, `config.json`, `push.json`, uploads, worktrees, the browser profile, and logging |
-| `HADAL_EXTENSIONS` | `./data/extensions` | `/data/extensions` | The owner's drop-in extensions, loaded from this folder                                           |
-| `HADAL_THEMES`     | `./data/themes`     | `/data/themes`     | The owner's themes, loaded from this folder                                                       |
-| `HADAL_PI_DIR`     | `./data/pi`         | `/home/node/.pi`   | Pi's `agent/` folder: `auth.json`, `settings.json`, skills, prompts, trust, sessions, packages    |
-| `HADAL_WORKSPACE`  | `./data/workspace`  | `/workspace`       | The projects HADAL works on, and where new sessions start                                         |
+| Variable           | Default             | In the container   | Holds                                                                                            |
+| ------------------ | ------------------- | ------------------ | ------------------------------------------------------------------------------------------------ |
+| `HADAL_DATA`       | `./data`            | `/data`            | `hadal.sqlite`, `config.json`, `push.json`, uploads, worktrees, the browser profile, and logging |
+| `HADAL_EXTENSIONS` | `./data/extensions` | `/data/extensions` | The owner's drop-in extensions, loaded from this folder                                          |
+| `HADAL_THEMES`     | `./data/themes`     | `/data/themes`     | The owner's themes, loaded from this folder                                                      |
+| `HADAL_PI_DIR`     | `./data/pi`         | `/home/node/.pi`   | Pi's `agent/` folder: `auth.json`, `settings.json`, skills, prompts, trust, sessions, packages   |
+| `HADAL_WORKSPACE`  | `./data/workspace`  | `/workspace`       | The projects HADAL works on, and where new sessions start                                        |
 
 The mounts are nested on purpose: `extensions`, `themes`, `pi`, and `workspace` are separate host folders under `./data`, even though the app reads them inside `/data` or `/home/node`. Dropping a `.ts` file into `./data/extensions` makes it appear in Menu → Extensions, off until the owner turns it on. The gallery's **Install** writes there too.
 

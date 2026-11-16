@@ -4,7 +4,7 @@ How HADAL's parts depend on each other, and the orderings the code relies on. [m
 
 ## Durable truth and what memory keeps
 
-Pi Durable owns the lasting state of conversations: conversations, entries, tasks, and HADAL's documents (`docs.ts`), in `pocket.sqlite`. People and settings, push subscriptions, uploads, and worktrees are files beside it ([map.md](map.md#data-hadal-or-hadal_dir)). What `PocketApp` keeps in memory about conversations is read back from storage:
+Pi Durable owns the lasting state of conversations: conversations, entries, tasks, and HADAL's documents (`docs.ts`), in `hadal.sqlite`. People and settings, push subscriptions, uploads, and worktrees are files beside it ([map.md](map.md#data-hadal-or-hadal_dir)). What `PocketApp` keeps in memory about conversations is read back from storage:
 
 - At startup, `#recover` reads each conversation's run, agent, chat, subagents, and who HADAL works for in it.
 - After that, every stored commit goes through `#committed`, which keeps the memory up to date.

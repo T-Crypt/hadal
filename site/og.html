@@ -1,0 +1,178 @@
+<!--
+    The source of og.png, HADAL's social card. Render it with headless Chromium at 1200x630, dark scheme:
+
+        chromium --headless --disable-gpu --force-color-profile=srgb --window-size=1200,630 \
+            --screenshot=og.png file://$PWD/og.html
+
+    Then commit the PNG. The colours are the Bell values in tokens.css, written out because the card renders from
+    file:// and must not depend on a stylesheet request.
+-->
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <style>
+            @font-face {
+                font-family: "Geist";
+                src: url("file:///home/tcrypt/projects/hadal/site/fonts/Geist.woff2")
+                    format("woff2");
+                font-weight: 100 900;
+            }
+            @font-face {
+                font-family: "PlexMono";
+                src: url("file:///home/tcrypt/projects/hadal/site/fonts/IBMPlexMono-Variable.woff2")
+                    format("woff2");
+                font-weight: 100 700;
+            }
+            * {
+                box-sizing: border-box;
+                margin: 0;
+                padding: 0;
+            }
+            body {
+                width: 1200px;
+                height: 630px;
+                overflow: hidden;
+                background:
+                    radial-gradient(46% 55% at 88% 8%, rgba(101, 217, 255, 0.09), transparent 70%),
+                    radial-gradient(
+                        34% 44% at 100% 60%,
+                        rgba(127, 178, 200, 0.05),
+                        transparent 70%
+                    ),
+                    #0a1014;
+                color: #e5f1fc;
+                font-family: Geist, system-ui, sans-serif;
+                display: flex;
+                flex-direction: column;
+            }
+            .top {
+                display: flex;
+                align-items: center;
+                gap: 14px;
+                padding: 46px 64px 0;
+            }
+            .top img {
+                width: 34px;
+                height: 34px;
+                border-radius: 3px;
+            }
+            .word {
+                font:
+                    600 15px/1 PlexMono,
+                    monospace;
+                letter-spacing: 0.22em;
+                text-transform: uppercase;
+            }
+            .tag {
+                margin-left: auto;
+                font:
+                    500 13px/1 PlexMono,
+                    monospace;
+                letter-spacing: 0.12em;
+                text-transform: uppercase;
+                color: #7fb2c8;
+            }
+            h1 {
+                padding: 40px 64px 0;
+                font-size: 78px;
+                line-height: 0.94;
+                letter-spacing: -0.045em;
+                font-weight: 600;
+                max-width: 1000px;
+            }
+            h1 em {
+                font-style: normal;
+                font-weight: 400;
+                color: #91a9bc;
+            }
+            .lead {
+                padding: 24px 64px 0;
+                max-width: 880px;
+                font-size: 25px;
+                line-height: 1.45;
+                color: #91a9bc;
+            }
+            .rail {
+                display: flex;
+                margin-top: auto;
+                height: 78px;
+                border-top: 1px solid rgba(229, 241, 252, 0.1);
+                background: #0c1319;
+            }
+            .seg {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                padding: 0 26px;
+                border-right: 1px solid rgba(229, 241, 252, 0.1);
+            }
+            .seg .lab {
+                font:
+                    500 11px/1 PlexMono,
+                    monospace;
+                letter-spacing: 0.12em;
+                text-transform: uppercase;
+                color: #8ba2af;
+            }
+            .seg b {
+                font:
+                    500 16px/1 PlexMono,
+                    monospace;
+                color: #e5f1fc;
+            }
+            .seg.live b {
+                color: #65d9ff;
+            }
+            .led {
+                width: 8px;
+                height: 8px;
+                border-radius: 50%;
+                background: #72e6c1;
+            }
+            .meter {
+                display: flex;
+                align-items: flex-end;
+                gap: 3px;
+            }
+            .meter i {
+                width: 6px;
+                height: 17px;
+                background: rgba(229, 241, 252, 0.22);
+            }
+            .meter i.on {
+                background: #65d9ff;
+            }
+            .push {
+                margin-left: auto;
+                border-right: 0;
+                border-left: 1px solid rgba(229, 241, 252, 0.1);
+            }
+        </style>
+    </head>
+    <body>
+        <div class="top">
+            <img src="file:///home/tcrypt/projects/hadal/site/icon.svg" alt="" />
+            <span class="word">HADAL</span>
+            <span class="tag">Self-hosted · your network · one GPU</span>
+        </div>
+        <h1>You operate an environment, <em>not a chat.</em></h1>
+        <p class="lead">
+            A project folder with its sessions, files, branch and lessons. The run finishes even
+            when the server does not.
+        </p>
+        <div class="rail">
+            <div class="seg"><span class="lab">env</span><b>hadal</b><span class="led"></span></div>
+            <div class="seg"><span class="lab">model</span><b>llama-swap/agent</b></div>
+            <div class="seg">
+                <span class="lab">ctx</span
+                ><span class="meter"
+                    ><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i
+                    ><i class="on"></i><i class="on"></i><i></i><i></i><i></i><i></i></span
+                ><b>62%</b>
+            </div>
+            <div class="seg live"><span class="lab">now</span><b>editing auth.ts</b></div>
+            <div class="seg push"><span class="lab">who</span><b>2</b></div>
+        </div>
+    </body>
+</html>

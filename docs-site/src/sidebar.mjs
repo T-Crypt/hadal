@@ -8,6 +8,7 @@ export const SIDEBAR = [
             ["docs/extensions.md", "Overview"],
             ["docs/extensions/first-extension.md", "Your first extension"],
             ["docs/customizing.md", "Changes without code"],
+            ["docs/folder-locks.md", "Folder locks"],
         ],
     },
     {

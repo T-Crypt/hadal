@@ -1,5 +1,5 @@
 /*
- * HADAL's look on Starlight, as the product site has it (site/style.css): Bell, the app's default palette
+ * HADAL's look on Starlight, as the product site has it (site/tokens.css): Bell, the app's default palette
  * (docs/design/hadal-ui.md). Steel plates for depth, Geist for text, IBM Plex Mono for code and figures, hairlines,
  * and one accent. It follows the system's light or dark setting.
  *
@@ -48,7 +48,14 @@
     --sl-color-gray-4: #2e404c;
     --sl-color-gray-5: #18242c;
     --sl-color-gray-6: #10181e;
+    /* Expressive Code's editor frames take gray-7. No page here uses an editor, and it matches the app's field
+     * beside the plates all the same. */
+    --sl-color-gray-7: #0c1319;
     --sl-color-black: #0a1014;
+
+    /* The etched set: a surface 6px, a control or a chip 3px. The same two numbers as the app and the site. */
+    --r-sm: 3px;
+    --r: 6px;
 
     /* Status, the app's own: ok, warn, err. */
     --pocket-ok: #72e6c1;
@@ -97,23 +104,20 @@ h1#_top {
     letter-spacing: -0.035em;
 }
 
-/* Figures and commands in the etched mono, as the app's readouts are. */
+/* Figures and commands in the etched mono, as the app's readouts are, with the etched corner. */
 .sl-markdown-content code {
     font-variant-ligatures: none;
+    border-radius: var(--r-sm);
 }
 
 /* The etched corners: a surface 6px, a control or a chip 3px. */
 .sl-link-button {
-    border-radius: 3px;
+    border-radius: var(--r-sm);
 }
 
 .card,
 .sl-link-card {
-    border-radius: 6px;
-}
-
-.sl-markdown-content code {
-    border-radius: 3px;
+    border-radius: var(--r);
 }
 
 /* Wide tables scroll inside themselves on a phone, not the page. */

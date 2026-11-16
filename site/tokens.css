@@ -1,0 +1,216 @@
+/*
+ * HADAL's site. Bell, the app's own look: steel plates for depth, IBM Plex Mono for every figure, Geist for text,
+ * hairlines, and one accent (docs/design/hadal-ui.md). It follows the system's light or dark setting; the
+ * screenshots of the app, and the phones they sit in, stay dark.
+ */
+@font-face {
+    font-family: "Pocket Sans";
+    src: url("fonts/Geist.woff2") format("woff2");
+    font-weight: 100 900;
+    font-display: swap;
+}
+
+/* The same variable IBM Plex Mono the app serves (web/fonts), so a figure reads alike in both. */
+@font-face {
+    font-family: "Pocket Mono";
+    src: url("fonts/IBMPlexMono-Variable.woff2") format("woff2");
+    font-weight: 100 700;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: "Pocket Mono";
+    src: url("fonts/IBMPlexMono-Variable-Italic.woff2") format("woff2");
+    font-weight: 100 700;
+    font-style: italic;
+    font-display: swap;
+}
+
+:root {
+    /* Depths, as etched plates: the field behind everything, the working ground, and what is raised over them. */
+    --bg: #0a1014;
+    --bg-2: #0c1319;
+    --card: #10181e;
+    --card-2: #18242c;
+    --line: rgba(229, 241, 252, 0.1);
+    --line-strong: rgba(229, 241, 252, 0.22);
+    --text: #e5f1fc;
+    --body: #91a9bc;
+    --muted: #8ba2af;
+    /* Signal: the one accent. It fills under 8% of any viewport and never decorates. */
+    --accent: #65d9ff;
+    --accent-soft: rgba(101, 217, 255, 0.12);
+    --accent-line: rgba(101, 217, 255, 0.45);
+    --on-accent: #0a1014;
+    /* The second voice, steel teal: labels and figures, and never a third hue. */
+    --brand: #7fb2c8;
+    --ok: #72e6c1;
+    --warn: #f0c674;
+    --warn-soft: rgba(240, 198, 116, 0.08);
+    --warn-line: rgba(240, 198, 116, 0.45);
+    --err: #ff8a9b;
+    --err-soft: rgba(255, 138, 155, 0.08);
+    --magenta: #7fb2c8;
+    --code-bg: #0c1319;
+    --nav-bg: rgba(10, 16, 20, 0.72);
+    /* The two still light pools: signal at 9%, the second voice at 5%. Nothing glows for decoration. */
+    --glow-1: rgba(101, 217, 255, 0.09);
+    --glow-2: rgba(127, 178, 200, 0.05);
+    /* One shadow, for the surfaces that float, with the hairline highlight along its top. */
+    --shadow: 0 12px 32px -12px rgba(4, 8, 10, 0.85), inset 0 1px 0 rgba(229, 241, 252, 0.06);
+    --focus: #65d9ff;
+    --sans:
+        "Pocket Sans", "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+        sans-serif;
+    --mono: "Pocket Mono", "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --max: 1140px;
+    /* The etched set: a surface 6px, a control or a chip 3px. Pills and avatars stay round. */
+    --r-sm: 3px;
+    --r: 6px;
+    --r-lg: 6px;
+    color-scheme: dark;
+}
+
+/*
+ * Light: the same layout on steel paper. Text keeps 4.9:1 or more on every ground here; the quietest pair is the
+ * muted ink on --bg-2.
+ */
+@media (prefers-color-scheme: light) {
+    :root {
+        --bg: #eef1f4;
+        --bg-2: #e4e9ed;
+        --card: #f9fafb;
+        --card-2: #e8edf1;
+        --line: rgba(13, 21, 25, 0.1);
+        --line-strong: rgba(13, 21, 25, 0.22);
+        --text: #0d1519;
+        --body: #33434c;
+        --muted: #54666f;
+        /* The signal, darkened to one deep steel cyan that holds contrast on paper. One hue, here and in the docs. */
+        --accent: #075e76;
+        --accent-soft: rgba(7, 94, 118, 0.09);
+        --accent-line: rgba(7, 94, 118, 0.4);
+        --on-accent: #ffffff;
+        --brand: #18637c;
+        --ok: #12674f;
+        --warn: #7a5310;
+        --warn-soft: rgba(122, 83, 16, 0.08);
+        --warn-line: rgba(122, 83, 16, 0.35);
+        --err: #9c2438;
+        --err-soft: rgba(156, 36, 56, 0.06);
+        --magenta: #18637c;
+        --code-bg: #e6ebef;
+        --nav-bg: rgba(238, 241, 244, 0.75);
+        --glow-1: rgba(7, 94, 118, 0.08);
+        --glow-2: rgba(24, 99, 124, 0.05);
+        --shadow: 0 12px 32px -14px rgba(13, 21, 25, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.7);
+        --focus: #075e76;
+        color-scheme: light;
+    }
+}
+
+* {
+    box-sizing: border-box;
+}
+
+html {
+    scroll-behavior: smooth;
+    scroll-padding-top: 80px;
+}
+
+body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--body);
+    font: 16px/1.65 var(--sans);
+    -webkit-text-size-adjust: 100%;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+}
+
+a {
+    color: var(--accent);
+    text-decoration: none;
+}
+
+a:hover {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+
+/* Links inside running text are underlined, so they do not rely on color alone. */
+:is(p, li, small, .term-foot, figcaption) a:not(.btn) {
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-decoration-color: var(--accent-line);
+    text-underline-offset: 3px;
+}
+
+img,
+svg {
+    display: block;
+}
+
+h1,
+h2,
+h3 {
+    color: var(--text);
+    margin: 0;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    text-wrap: balance;
+}
+
+p {
+    margin: 0;
+    text-wrap: pretty;
+}
+
+code,
+kbd,
+pre {
+    font-family: var(--mono);
+    font-variant-ligatures: none;
+}
+
+code {
+    color: var(--text);
+    background: var(--card-2);
+    border-radius: var(--r-sm);
+    padding: 0.1em 0.38em;
+    font-size: 0.86em;
+}
+
+:focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+    border-radius: var(--r-sm);
+}
+
+kbd {
+    display: inline-block;
+    min-width: 1.7em;
+    padding: 0 0.4em;
+    border: 1px solid var(--line-strong);
+    border-bottom-width: 2px;
+    border-radius: var(--r-sm);
+    background: var(--card);
+    color: var(--text);
+    font-size: 0.85em;
+    line-height: 1.55;
+    text-align: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    html {
+        scroll-behavior: auto;
+    }
+
+    *,
+    *::before,
+    *::after {
+        animation: none !important;
+        transition: none !important;
+    }
+}

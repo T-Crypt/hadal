@@ -8,11 +8,19 @@
             name="description"
             content="How HADAL is built: one Node.js process, one SQLite file through Pi Durable, and a web app with no build step. Architecture, request path, durability rules, state, extensions, and security."
         />
-        <meta name="theme-color" content="#111219" media="(prefers-color-scheme: dark)" />
-        <meta name="theme-color" content="#f7f8fb" media="(prefers-color-scheme: light)" />
-        <link rel="canonical" href="https://github.com/T-Crypt/hadal/engineering.html" />
+        <meta name="theme-color" content="#0a1014" media="(prefers-color-scheme: dark)" />
+        <meta name="theme-color" content="#eef1f4" media="(prefers-color-scheme: light)" />
+        <link rel="canonical" href="https://t-crypt.github.io/hadal/engineering.html" />
         <link rel="icon" href="icon.svg" type="image/svg+xml" />
         <link rel="preload" href="fonts/Geist.woff2" as="font" type="font/woff2" crossorigin />
+        <link
+            rel="preload"
+            href="fonts/IBMPlexMono-Variable.woff2"
+            as="font"
+            type="font/woff2"
+            crossorigin
+        />
+        <link rel="stylesheet" href="tokens.css" />
         <link rel="stylesheet" href="style.css" />
 
         <meta property="og:type" content="article" />
@@ -22,8 +30,8 @@
             property="og:description"
             content="Architecture, request path, durability rules, state, and extensions of a self-hosted web app for the Pi coding agent."
         />
-        <meta property="og:url" content="https://github.com/T-Crypt/hadal/engineering.html" />
-        <meta property="og:image" content="https://github.com/T-Crypt/hadal" />
+        <meta property="og:url" content="https://t-crypt.github.io/hadal/engineering.html" />
+        <meta property="og:image" content="https://t-crypt.github.io/hadal/og.png" />
         <meta name="twitter:card" content="summary_large_image" />
     </head>
     <body>
@@ -69,8 +77,8 @@
                     <p class="lead">
                         One Node.js process, one SQLite file, and a web app with no build step.
                         HADAL Durable runs the agent and commits every step before anyone sees it.
-                        HADAL Pocket adds the people, the phone, and the ways in. This page covers
-                        the parts, how a message moves through them, and the rules that keep them
+                        HADAL adds the people, the phone, and the ways in. This page covers the
+                        parts, how a message moves through them, and the rules that keep them
                         consistent.
                     </p>
                     <div class="facts">
@@ -150,7 +158,7 @@
                             <div class="wire">one file</div>
                             <div class="layer store">
                                 <div class="layer-head">
-                                    <b>SQLite</b><code>~/.hadal/pocket.sqlite</code>
+                                    <b>SQLite</b><code>~/.hadal/hadal.sqlite</code>
                                 </div>
                             </div>
                         </div>
@@ -411,7 +419,7 @@
                         <p>
                             HADAL's documents sit beside Pi Durable's own (the transcript, the
                             agent's settings, the inbox, the live run, usage) in
-                            <code>pocket.sqlite</code>. Their kinds are stored data, so they are
+                            <code>hadal.sqlite</code>. Their kinds are stored data, so they are
                             never renamed.
                         </p>
                     </div>
@@ -935,10 +943,10 @@
                         <a href="architecture.html">Architecture guide</a>
                     </nav>
                     <small
-                        >Geist and JetBrains Mono are used under the SIL Open Font License (<a
+                        >Geist and IBM Plex Mono are used under the SIL Open Font License (<a
                             href="fonts/Geist-OFL.txt"
                             >Geist</a
-                        >, <a href="fonts/OFL.txt">JetBrains Mono</a>).</small
+                        >, <a href="fonts/OFL.txt">IBM Plex Mono</a>).</small
                     >
                 </div>
             </div>

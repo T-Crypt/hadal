@@ -1,188 +1,8 @@
 /*
- * HADAL's site. The app's own look: Tokyo Night colors, Geist for text and JetBrains Mono for code, soft
- * corners, thin lines, and one accent. It follows the system's light or dark setting; the screenshots of the app,
- * and the phones they sit in, stay dark.
+ * The guide pages (engineering.html). Load tokens.css first: it carries the fonts, the Bell tokens and the
+ * arrival motion this file builds on. The old landing's components are still here, and this page reuses many
+ * of them (.btn, .nav, .section, .split, .card).
  */
-@font-face {
-    font-family: "Pocket Sans";
-    src: url("fonts/Geist.woff2") format("woff2");
-    font-weight: 100 900;
-    font-display: swap;
-}
-
-@font-face {
-    font-family: "Pocket Mono";
-    src: url("fonts/JetBrainsMono.woff2") format("woff2");
-    font-weight: 100 800;
-    font-display: swap;
-}
-
-:root {
-    --bg: #111219;
-    --bg-2: #15161f;
-    --card: #191a25;
-    --card-2: #1f2131;
-    --line: rgba(192, 202, 245, 0.08);
-    --line-strong: rgba(192, 202, 245, 0.16);
-    --text: #e3e8ff;
-    --body: #a9b1d6;
-    --muted: #7c84ab;
-    --accent: #7aa2f7;
-    --accent-soft: rgba(122, 162, 247, 0.12);
-    --accent-line: rgba(122, 162, 247, 0.45);
-    --on-accent: #0e0f16;
-    --brand: #ff9e64;
-    --ok: #9ece6a;
-    --warn: #e0af68;
-    --warn-soft: rgba(224, 175, 104, 0.08);
-    --warn-line: rgba(224, 175, 104, 0.45);
-    --err: #f7768e;
-    --err-soft: rgba(247, 118, 142, 0.08);
-    --magenta: #bb9af7;
-    --code-bg: #0d0e14;
-    --nav-bg: rgba(17, 18, 25, 0.72);
-    --glow-1: rgba(122, 162, 247, 0.18);
-    --glow-2: rgba(187, 154, 247, 0.12);
-    --shadow: 0 30px 80px -30px rgba(0, 0, 0, 0.8), 0 10px 30px -12px rgba(0, 0, 0, 0.6);
-    --focus: #7dcfff;
-    --sans:
-        "Pocket Sans", "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
-        sans-serif;
-    --mono: "Pocket Mono", "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-    --max: 1140px;
-    --r-sm: 8px;
-    --r: 12px;
-    --r-lg: 18px;
-    color-scheme: dark;
-}
-
-/* Light: the same layout on paper. Every text color keeps a contrast of 4.5:1 or more on these backgrounds. */
-@media (prefers-color-scheme: light) {
-    :root {
-        --bg: #f7f8fb;
-        --bg-2: #eff1f6;
-        --card: #ffffff;
-        --card-2: #eef0f6;
-        --line: rgba(31, 35, 53, 0.09);
-        --line-strong: rgba(31, 35, 53, 0.17);
-        --text: #161926;
-        --body: #3b4261;
-        --muted: #5a6182;
-        --accent: #2a56c6;
-        --accent-soft: rgba(42, 86, 198, 0.08);
-        --accent-line: rgba(42, 86, 198, 0.4);
-        --on-accent: #ffffff;
-        --brand: #b35400;
-        --ok: #33701c;
-        --warn: #7d5300;
-        --warn-soft: rgba(196, 140, 40, 0.08);
-        --warn-line: rgba(125, 83, 0, 0.35);
-        --err: #b8204a;
-        --err-soft: rgba(184, 32, 74, 0.06);
-        --magenta: #7139c4;
-        --code-bg: #f0f2f7;
-        --nav-bg: rgba(247, 248, 251, 0.75);
-        --glow-1: rgba(42, 86, 198, 0.1);
-        --glow-2: rgba(113, 57, 196, 0.07);
-        --shadow: 0 30px 70px -32px rgba(22, 25, 38, 0.45), 0 8px 24px -12px rgba(22, 25, 38, 0.2);
-        --focus: #0b6bb8;
-        color-scheme: light;
-    }
-}
-
-* {
-    box-sizing: border-box;
-}
-
-html {
-    scroll-behavior: smooth;
-    scroll-padding-top: 80px;
-}
-
-body {
-    margin: 0;
-    background: var(--bg);
-    color: var(--body);
-    font: 16px/1.65 var(--sans);
-    -webkit-text-size-adjust: 100%;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
-    text-rendering: optimizeLegibility;
-}
-
-a {
-    color: var(--accent);
-    text-decoration: none;
-}
-
-a:hover {
-    text-decoration: underline;
-    text-underline-offset: 3px;
-}
-
-/* Links inside running text are underlined, so they do not rely on color alone. */
-:is(p, li, small, .term-foot, figcaption) a:not(.btn) {
-    text-decoration: underline;
-    text-decoration-thickness: 1px;
-    text-decoration-color: var(--accent-line);
-    text-underline-offset: 3px;
-}
-
-img,
-svg {
-    display: block;
-}
-
-h1,
-h2,
-h3 {
-    color: var(--text);
-    margin: 0;
-    font-weight: 600;
-    letter-spacing: -0.02em;
-    text-wrap: balance;
-}
-
-p {
-    margin: 0;
-    text-wrap: pretty;
-}
-
-code,
-kbd,
-pre {
-    font-family: var(--mono);
-    font-variant-ligatures: none;
-}
-
-code {
-    color: var(--text);
-    background: var(--card-2);
-    border-radius: 5px;
-    padding: 0.1em 0.38em;
-    font-size: 0.86em;
-}
-
-:focus-visible {
-    outline: 2px solid var(--focus);
-    outline-offset: 2px;
-    border-radius: 4px;
-}
-
-kbd {
-    display: inline-block;
-    min-width: 1.7em;
-    padding: 0 0.4em;
-    border: 1px solid var(--line-strong);
-    border-bottom-width: 2px;
-    border-radius: 5px;
-    background: var(--card);
-    color: var(--text);
-    font-size: 0.85em;
-    line-height: 1.55;
-    text-align: center;
-}
-
 .wrap {
     max-width: var(--max);
     margin: 0 auto;
@@ -213,7 +33,7 @@ kbd {
     height: 44px;
     padding: 0 20px;
     border: 1px solid var(--line-strong);
-    border-radius: 999px;
+    border-radius: var(--r-sm);
     background: transparent;
     color: var(--text);
     font: 500 15px var(--sans);
@@ -234,16 +54,17 @@ kbd {
     transform: translateY(1px);
 }
 
+/* The one live action takes the signal, as the app's send does. */
 .btn-primary {
-    background: var(--text);
-    border-color: var(--text);
-    color: var(--bg);
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--on-accent);
 }
 
 .btn-primary:hover {
-    background: var(--text);
-    border-color: var(--text);
-    opacity: 0.88;
+    background: color-mix(in oklab, var(--accent) 86%, white);
+    border-color: color-mix(in oklab, var(--accent) 86%, white);
+    color: var(--on-accent);
 }
 
 .btn-sm {
@@ -293,7 +114,7 @@ kbd {
 .logo img {
     width: 26px;
     height: 26px;
-    border-radius: 7px;
+    border-radius: var(--r);
 }
 
 .nav-links {
@@ -557,7 +378,7 @@ kbd {
     overflow: hidden;
     aspect-ratio: 402 / 874;
     border-radius: calc(64 * var(--u));
-    background: #1a1b26;
+    background: #0a1014;
     container-type: inline-size;
 }
 
@@ -578,7 +399,7 @@ kbd {
     position: absolute;
     width: calc(4 * var(--u));
     border-radius: calc(2 * var(--u));
-    background: linear-gradient(90deg, #3a3b40, #76777d 50%, #3a3b40);
+    background: linear-gradient(90deg, #2e3d45, #7e93a0 50%, #2e3d45);
 }
 
 .phone .keys i:nth-child(1) {
@@ -755,9 +576,9 @@ kbd {
 
 .window {
     margin: 0;
-    border-radius: var(--r-lg);
-    background: #16161e;
-    border: 1px solid rgba(192, 202, 245, 0.12);
+    border-radius: var(--r);
+    background: #0c1319;
+    border: 1px solid var(--line-strong);
     box-shadow: var(--shadow);
     overflow: hidden;
 }
@@ -768,8 +589,8 @@ kbd {
     align-items: center;
     height: 42px;
     padding: 0 16px;
-    background: #1c1d27;
-    border-bottom: 1px solid rgba(192, 202, 245, 0.08);
+    background: #10181e;
+    border-bottom: 1px solid var(--line);
 }
 
 .window-dots {
@@ -777,23 +598,12 @@ kbd {
     gap: 8px;
 }
 
+/* Etched steel, not traffic lights: on the bell, color marks a state, and a fake window has none. */
 .window-dots i {
-    width: 12px;
-    height: 12px;
+    width: 11px;
+    height: 11px;
     border-radius: 50%;
-    background: #3b3d4d;
-}
-
-.window-dots i:nth-child(1) {
-    background: #ff5f57;
-}
-
-.window-dots i:nth-child(2) {
-    background: #febc2e;
-}
-
-.window-dots i:nth-child(3) {
-    background: #28c840;
+    background: #33454f;
 }
 
 .window-url {
@@ -803,10 +613,10 @@ kbd {
     min-width: 280px;
     justify-content: center;
     padding: 4px 14px;
-    border-radius: 8px;
-    background: #12131a;
-    color: #8a91b4;
-    font: 12.5px var(--sans);
+    border-radius: var(--r-sm);
+    background: #0a1014;
+    color: var(--body);
+    font: 12.5px var(--mono);
 }
 
 .window-url svg {
@@ -970,7 +780,7 @@ kbd {
     width: 40px;
     height: 40px;
     margin-bottom: 20px;
-    border-radius: 11px;
+    border-radius: var(--r);
     background: var(--accent-soft);
     color: var(--accent);
 }
@@ -985,10 +795,11 @@ kbd {
     display: inline-block;
     margin-bottom: 14px;
     padding: 3px 9px;
-    border-radius: 6px;
+    border-radius: var(--r-sm);
     background: var(--card-2);
     color: var(--brand);
     font-size: 12.5px;
+    font-family: var(--mono);
 }
 
 .map-head {
@@ -1034,7 +845,7 @@ kbd {
     width: 36px;
     height: 36px;
     margin-bottom: 16px;
-    border-radius: 10px;
+    border-radius: var(--r);
 }
 
 .bento .icon svg {
@@ -1123,7 +934,7 @@ kbd {
     width: 22px;
     height: 22px;
     border-radius: 50%;
-    background: rgba(158, 206, 106, 0.12);
+    background: rgba(114, 230, 193, 0.12);
     color: var(--ok);
     font-size: 11px;
 }
@@ -1150,7 +961,7 @@ kbd {
 }
 
 .timeline .crash .mark {
-    background: rgba(247, 118, 142, 0.15);
+    background: rgba(255, 138, 155, 0.15);
     color: var(--err);
 }
 
@@ -1293,7 +1104,7 @@ kbd {
 .approval-actions .btn {
     height: 36px;
     padding: 0 18px;
-    border-radius: 9px;
+    border-radius: var(--r-sm);
     font-size: 14px;
 }
 
@@ -1331,7 +1142,7 @@ kbd {
     width: 24px;
     height: 24px;
     border-radius: 50%;
-    background: rgba(247, 118, 142, 0.16);
+    background: rgba(255, 138, 155, 0.16);
     color: var(--err);
     font-size: 13px;
 }
@@ -1773,60 +1584,6 @@ kbd {
     margin-top: 14px;
 }
 
-/* ── Arrival ─────────────────────────────────────────────── */
-
-/* Set by main.js, so the page shows everything without it. */
-.js .reveal {
-    opacity: 0;
-    transform: translateY(18px);
-    transition:
-        opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1),
-        transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.js .reveal.shown {
-    opacity: 1;
-    transform: none;
-}
-
-/* The run's timeline plays once it arrives: each step commits in turn, then the restart, then the resume. */
-.js .panel.reveal li {
-    opacity: 0;
-    transform: translateX(-6px);
-    transition:
-        opacity 0.45s ease,
-        transform 0.45s ease;
-}
-
-.js .panel.reveal.shown li {
-    opacity: 1;
-    transform: none;
-}
-
-.js .panel.reveal.shown li:nth-child(2) {
-    transition-delay: 0.25s;
-}
-
-.js .panel.reveal.shown li:nth-child(3) {
-    transition-delay: 0.5s;
-}
-
-.js .panel.reveal.shown li:nth-child(4) {
-    transition-delay: 0.95s;
-}
-
-.js .panel.reveal.shown li:nth-child(5) {
-    transition-delay: 1.55s;
-}
-
-.js .panel.reveal.shown li:nth-child(6) {
-    transition-delay: 1.85s;
-}
-
-.js .panel.reveal.shown li:nth-child(7) {
-    transition-delay: 2.15s;
-}
-
 /* ── Responsive ──────────────────────────────────────────── */
 
 @media (max-width: 1000px) {
@@ -2033,24 +1790,5 @@ kbd {
 
     .term-foot {
         padding: 14px 18px;
-    }
-}
-
-@media (prefers-reduced-motion: reduce) {
-    html {
-        scroll-behavior: auto;
-    }
-
-    *,
-    *::before,
-    *::after {
-        animation: none !important;
-        transition: none !important;
-    }
-
-    .js .reveal,
-    .js .panel.reveal li {
-        opacity: 1;
-        transform: none;
     }
 }

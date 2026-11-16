@@ -6,6 +6,7 @@
     <a href="https://nodejs.org"><img src="https://img.shields.io/badge/node-%E2%89%A5%2022.19-339933?logo=nodedotjs&logoColor=white" alt="Node.js 22.19 or newer"></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-65D9FF" alt="MIT license"></a>
     <a href="docs/features.md"><img src="https://img.shields.io/badge/features-tour-91A9BC" alt="Feature tour"></a>
+    <a href="https://t-crypt.github.io/hadal/"><img src="https://img.shields.io/badge/site-t--crypt.github.io-65D9FF" alt="HADAL site on GitHub Pages"></a>
 </p>
 
 <p align="center">

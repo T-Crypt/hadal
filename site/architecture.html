@@ -8,7 +8,7 @@
             name="description"
             content="An interactive guide to how HADAL uses Pi Durable: the commit listener, attribution, crash recovery rules, documents, and extensions."
         />
-        <link rel="canonical" href="https://github.com/T-Crypt/hadal/architecture.html" />
+        <link rel="canonical" href="https://t-crypt.github.io/hadal/architecture.html" />
         <link rel="icon" href="icon.svg" type="image/svg+xml" />
         <meta property="og:type" content="article" />
         <meta property="og:site_name" content="HADAL" />
@@ -17,72 +17,91 @@
             property="og:description"
             content="An interactive guide to how HADAL uses Pi Durable: the commit listener, attribution, crash recovery rules, documents, and extensions."
         />
-        <meta property="og:url" content="https://github.com/T-Crypt/hadal/architecture.html" />
-        <meta property="og:image" content="https://github.com/T-Crypt/hadal" />
+        <meta property="og:url" content="https://t-crypt.github.io/hadal/architecture.html" />
+        <meta property="og:image" content="https://t-crypt.github.io/hadal/og.png" />
         <meta name="twitter:card" content="summary_large_image" />
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <meta name="theme-color" content="#0a1014" media="(prefers-color-scheme: dark)" />
+        <meta name="theme-color" content="#eef1f4" media="(prefers-color-scheme: light)" />
+        <link rel="preload" href="fonts/Geist.woff2" as="font" type="font/woff2" crossorigin />
         <link
-            href="https://fonts.googleapis.com/css2?family=Geist:wght@400..800&family=JetBrains+Mono:wght@400;500;700&display=swap"
-            rel="stylesheet"
+            rel="preload"
+            href="fonts/IBMPlexMono-Variable.woff2"
+            as="font"
+            type="font/woff2"
+            crossorigin
         />
         <style>
+            /* The same two faces the app and the landing page serve, from this folder. */
+            @font-face {
+                font-family: "Geist";
+                src: url("fonts/Geist.woff2") format("woff2");
+                font-weight: 100 900;
+                font-display: swap;
+            }
+            @font-face {
+                font-family: "Pocket Mono";
+                src: url("fonts/IBMPlexMono-Variable.woff2") format("woff2");
+                font-weight: 100 700;
+                font-display: swap;
+            }
+
             /* Layout: flight-recorder ledger. Gridded paper, a sticky contents rail on wide screens, sections as instrument panels. */
             :root {
                 /* The light colors keep text at 4.5:1 or more, also on their own tints. */
-                --paper: #eef1f3;
-                --sheet: #f8fafb;
-                --ink: #142029;
-                --ink-2: #4a5a66;
-                --rule: #c9d2d9;
-                --grid: rgba(20, 32, 41, 0.06);
-                --commit: #d97a00;
-                --commit-ink: #874800;
-                --entry: #245c97;
-                --task: #1e6a44;
-                --doc: #7440a6;
-                --sub: #9e2a6d;
-                --crash: #ad2828;
-                --people: #08716f;
+                --paper: #eef1f4;
+                --sheet: #f9fafb;
+                --ink: #0d1519;
+                --ink-2: #33434c;
+                --rule: #c6ced4;
+                --grid: rgba(13, 21, 25, 0.06);
+                --commit: #18637c;
+                --commit-ink: #0f4c60;
+                --entry: #33434c;
+                --task: #12674f;
+                --doc: #075e76;
+                --sub: #7a5310;
+                --crash: #9c2438;
+                --people: #0d1519;
                 --wash: color-mix(in srgb, var(--ink) 5%, transparent);
                 --display: "Geist", system-ui, -apple-system, "Segoe UI", sans-serif;
                 --body: "Geist", system-ui, -apple-system, "Segoe UI", sans-serif;
-                --mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+                --mono:
+                    "Pocket Mono", "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
             }
             @media (prefers-color-scheme: dark) {
                 :root:not([data-theme="light"]) {
-                    --paper: #0f151a;
-                    --sheet: #161e25;
-                    --ink: #e3e9ed;
-                    --ink-2: #93a3ae;
-                    --rule: #2a3640;
-                    --grid: rgba(227, 233, 237, 0.05);
-                    --commit: #ffa43a;
-                    --commit-ink: #ffb55c;
-                    --entry: #63a4f0;
-                    --task: #4fc08d;
-                    --doc: #b88ceb;
-                    --sub: #ee77b8;
-                    --crash: #ff6b6b;
-                    --people: #3cc8c9;
+                    --paper: #0a1014;
+                    --sheet: #10181e;
+                    --ink: #e5f1fc;
+                    --ink-2: #91a9bc;
+                    --rule: #223038;
+                    --grid: rgba(229, 241, 252, 0.05);
+                    --commit: #7fb2c8;
+                    --commit-ink: #9fc6d6;
+                    --entry: #91a9bc;
+                    --task: #72e6c1;
+                    --doc: #65d9ff;
+                    --sub: #f0c674;
+                    --crash: #ff8a9b;
+                    --people: #e5f1fc;
                     color-scheme: dark;
                 }
             }
             :root[data-theme="dark"] {
-                --paper: #0f151a;
-                --sheet: #161e25;
-                --ink: #e3e9ed;
-                --ink-2: #93a3ae;
-                --rule: #2a3640;
-                --grid: rgba(227, 233, 237, 0.05);
-                --commit: #ffa43a;
-                --commit-ink: #ffb55c;
-                --entry: #63a4f0;
-                --task: #4fc08d;
-                --doc: #b88ceb;
-                --sub: #ee77b8;
-                --crash: #ff6b6b;
-                --people: #3cc8c9;
+                --paper: #0a1014;
+                --sheet: #10181e;
+                --ink: #e5f1fc;
+                --ink-2: #91a9bc;
+                --rule: #223038;
+                --grid: rgba(229, 241, 252, 0.05);
+                --commit: #7fb2c8;
+                --commit-ink: #9fc6d6;
+                --entry: #91a9bc;
+                --task: #72e6c1;
+                --doc: #65d9ff;
+                --sub: #f0c674;
+                --crash: #ff8a9b;
+                --people: #e5f1fc;
                 color-scheme: dark;
             }
 
@@ -1739,8 +1758,8 @@
                         example a scheduled message that HADAL set up, the task of a subagent, or a
                         message from Lantern, a watch, or a webhook. A schedule that a person set up
                         sends a <code>u:</code> message for that person. If no person is known,
-                        HADAL Pocket charges the person who started the session. If that person is
-                        not known, it charges the owner.
+                        HADAL charges the person who started the session. If that person is not
+                        known, it charges the owner.
                     </p>
                 </section>
 
@@ -1830,7 +1849,7 @@
                             <div>
                                 <h3>Server restart</h3>
                                 <p class="note">
-                                    Amber items are in <code>pocket.sqlite</code>. Teal items are
+                                    Amber items are in <code>hadal.sqlite</code>. Teal items are
                                     only in the memory of the process.
                                 </p>
                             </div>
@@ -1860,7 +1879,7 @@
                         <p class="eyebrow">docs.ts</p>
                         <h2>Data storage</h2>
                         <p class="lede">
-                            HADAL documents are in <code>pocket.sqlite</code>, together with the
+                            HADAL documents are in <code>hadal.sqlite</code>, together with the
                             transcript and the Pi Durable documents: the agent settings, the
                             provider ID, the inbox, the live run, and usage. Each document kind
                             tells what a fork gets. Click "Fork at reply 5" to see the result.
@@ -2436,7 +2455,7 @@
                     },
                     sqlite: {
                         name: "SQLite",
-                        path: "~/.hadal/pocket.sqlite",
+                        path: "~/.hadal/hadal.sqlite",
                         c: "var(--commit-ink)",
                         main: true,
                         text: "The database is one file in WAL mode. Only one server process can use it at a time. Thus, the server first gets the lock on the data folder.",
@@ -2593,7 +2612,7 @@
                     [
                         "harness",
                         "pdocs",
-                        "HADAL keeps its state in the same storage as the transcript, in pocket.sqlite.",
+                        "HADAL keeps its state in the same storage as the transcript, in hadal.sqlite.",
                     ],
                     [
                         "commit",
@@ -3240,7 +3259,7 @@
                         "$ menu → Restart server",
                         "server exits with code 75 · launcher starts it again",
                         "get lock · load models · install extensions",
-                        "open pocket.sqlite · #recover sessions, runs, chat, authors",
+                        "open hadal.sqlite · #recover sessions, runs, chat, authors",
                         "subscribe to commits · prepare Lancet Guard",
                         "harness.resume() · running work continues",
                     ];

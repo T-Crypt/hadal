@@ -8,7 +8,7 @@ Where things are in HADAL, for agents working on it. [index.md](index.md) lists 
 
 ## Data (`~/.hadal/`, or `HADAL_DIR`)
 
-- `pocket.sqlite`: Pi Durable's storage: conversations, entries, tasks, and HADAL's documents.
+- `hadal.sqlite`: Pi Durable's storage: conversations, entries, tasks, and HADAL's documents.
 - `config.json`: people, roles, hashed tokens, settings. `push.json`: VAPID keys and push subscriptions. `provider-limits.json`: the limits that runs wait for now, kept only as a hint (a missing or damaged file means no limit is known).
 - `launcher.json`: the launcher's access choice. `serve-mount.json`: the Tailscale Serve mount the launcher made, named by port, so a later start can clear it.
 - `launcher.lock` and `harness.lock` (each with a `.identity` file): one launcher per data folder, and one server per data folder.
@@ -308,7 +308,7 @@ The maskable icon is the mark centered on a transparent 512 × 512 page, well in
 ## How a message travels
 
 1. `POST /api/c/:id/submit` → `commands.submit`: checks access, turns, and spend, expands a template, then `conversation.submit()` with request id `u:<userId>:<clientId>`. The request id makes a retry a no-op and names the author.
-2. Pi Durable runs the generation and tool tasks, committing each step to `pocket.sqlite`. Extension hooks run inside those tasks.
+2. Pi Durable runs the generation and tool tasks, committing each step to `hadal.sqlite`. Extension hooks run inside those tasks.
 3. `app.ts`'s commit coordinator (`#committed`) hears every commit: spend counts usage first, then each document change updates what the app keeps in memory and the rooms that show it, and `attribution.ts` notes who each message is for.
 4. Each room sends its tabs what changed. `store.js` applies it, and Preact renders.
 

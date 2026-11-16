@@ -52,6 +52,7 @@
         "format": "eslint --fix . && prettier --write .",
         "format:check": "prettier --check . && eslint .",
         "lint": "eslint .",
+        "shots": "node scripts/readme-shots.mjs",
         "prepack": "node -e \"require('node:fs').copyFileSync('package-lock.json', 'npm-shrinkwrap.json')\"",
         "postpack": "node -e \"require('node:fs').rmSync('npm-shrinkwrap.json', { force: true })\"",
         "prepublishOnly": "npm run check && npm run lint && npm test"

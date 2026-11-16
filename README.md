@@ -187,6 +187,7 @@ npm run check:web   # type-check web/
 npm run coverage    # tests with line coverage, held at 60%
 npm run format      # ESLint layout fixes, then Prettier
 npm run lint        # check the layout rules
+npm run shots       # regenerate the README's two previews (needs a Chromium and playwright-core)
 ```
 
 `web/` changes reload every open browser, and extensions reload into the running server. `node test/serve.ts` runs a

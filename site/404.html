@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en" data-theme="auto">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+        <title>No page at this address · HADAL</title>
+        <meta name="description" content="Nothing is filed at this address on HADAL's site." />
+        <meta name="robots" content="noindex" />
+        <meta name="color-scheme" content="dark light" />
+        <meta name="theme-color" content="#0a1014" media="(prefers-color-scheme: dark)" />
+        <meta name="theme-color" content="#eef1f4" media="(prefers-color-scheme: light)" />
+        <link
+            rel="icon"
+            href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230a1014'/%3E%3Cpath d='M11 9v14M21 9v14M11 15l5 6 5-6' fill='none' stroke='%23e5f1fc' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3Ccircle cx='16' cy='21.5' r='1.4' fill='%2365d9ff'/%3E%3C/svg%3E"
+        />
+        <link rel="preload" href="fonts/Geist.woff2" as="font" type="font/woff2" crossorigin />
+        <link
+            rel="preload"
+            href="fonts/IBMPlexMono-Variable.woff2"
+            as="font"
+            type="font/woff2"
+            crossorigin
+        />
+        <link rel="stylesheet" href="tokens.css" />
+        <style>
+            /* One page, on tokens.css alone: the field, the topbar, and a plate of ways onward. */
+            .shell {
+                max-width: 620px;
+                margin: 0 auto;
+                padding: 0 24px;
+            }
+
+            .brand {
+                display: inline-flex;
+                align-items: center;
+                gap: 10px;
+                margin: 28px 0 0;
+                font-family: var(--mono);
+                font-size: 14px;
+                letter-spacing: 0.04em;
+                text-transform: uppercase;
+                color: var(--text);
+                text-decoration: none;
+            }
+
+            .brand:hover {
+                color: var(--accent);
+            }
+
+            main {
+                padding: 48px 0 72px;
+            }
+
+            h1 {
+                margin: 0;
+                font-size: clamp(28px, 5vw, 40px);
+                line-height: 1.15;
+                letter-spacing: -0.02em;
+            }
+
+            .lede {
+                margin: 14px 0 0;
+                max-width: 46ch;
+                color: var(--body);
+                font-size: 17px;
+                line-height: 1.6;
+            }
+
+            /* The address a person asked for, once the page can read it. */
+            .asked {
+                margin: 18px 0 0;
+                font-family: var(--mono);
+                font-size: 13px;
+                color: var(--muted);
+                overflow-wrap: anywhere;
+            }
+
+            .plate {
+                margin: 28px 0 0;
+                padding: 4px 20px;
+                border: 1px solid var(--line);
+                border-radius: var(--r);
+                background: var(--card);
+            }
+
+            .plate a {
+                display: flex;
+                gap: 16px;
+                align-items: baseline;
+                padding: 14px 0;
+                border-top: 1px solid var(--line);
+                color: inherit;
+                text-decoration: none;
+            }
+
+            .plate a:first-child {
+                border-top: 0;
+            }
+
+            .plate a:hover {
+                color: var(--accent);
+            }
+
+            .name {
+                flex: 0 0 auto;
+                font-family: var(--mono);
+                font-size: 13px;
+                color: var(--brand);
+                letter-spacing: 0.03em;
+            }
+
+            .what {
+                color: var(--body);
+                font-size: 15px;
+            }
+
+            footer {
+                padding: 0 0 48px;
+                color: var(--muted);
+                font-family: var(--mono);
+                font-size: 12px;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="shell">
+            <a class="brand" href="./" aria-label="HADAL home">
+                <img src="icon.svg" alt="" width="26" height="26" />
+                <span>HADAL</span>
+            </a>
+            <main>
+                <h1>No page at this address</h1>
+                <p class="lede">
+                    HADAL's site is small and its files move. Everything on it is one of these.
+                </p>
+                <p class="asked" hidden></p>
+                <nav class="plate" aria-label="Ways onward">
+                    <a href="./"
+                        ><span class="name">Home</span
+                        ><span class="what">What HADAL is, and how to start it</span></a
+                    >
+                    <a href="docs/"
+                        ><span class="name">Docs</span
+                        ><span class="what">
+                            Reference and guides, with a search box at the top</span
+                        ></a
+                    >
+                    <a href="engineering.html"
+                        ><span class="name">Engineering</span
+                        ><span class="what"
+                            >The parts, and how a message moves through them</span
+                        ></a
+                    >
+                    <a href="durable.html"
+                        ><span class="name">Durable sessions</span
+                        ><span class="what">
+                            What survives a restart, and what a run leaves behind</span
+                        ></a
+                    >
+                    <a href="architecture.html"
+                        ><span class="name">Architecture</span
+                        ><span class="what">Every file, every table, every boundary</span></a
+                    >
+                    <a href="https://github.com/T-Crypt/hadal"
+                        ><span class="name">GitHub</span
+                        ><span class="what">The source, the issues, and the releases</span></a
+                    >
+                </nav>
+            </main>
+            <footer>404</footer>
+        </div>
+        <script>
+            // Show what was asked for, so a mistyped path is obvious. The page says nothing about it without script.
+            const asked = document.querySelector(".asked");
+
+            asked.textContent = `Nothing is filed at ${decodeURIComponent(location.pathname)}`;
+            asked.hidden = false;
+        </script>
+    </body>
+</html>

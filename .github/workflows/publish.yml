@@ -17,6 +17,10 @@ permissions:
 jobs:
     npm:
         runs-on: ubuntu-latest
+        env:
+            # As in ci.yml: a path that is not a file makes findBrowser() return undefined, so the tests that need a
+            # browser skip themselves instead of failing on waits the runner cannot complete.
+            PI_POCKET_BROWSER: /nonexistent-browser-on-ci
         steps:
             - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
               with:

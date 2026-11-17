@@ -8,8 +8,8 @@ stays; a feature that does not move its metric is removed. Per-change plans live
 A durable, multiplayer server that runs agent sessions on local or cloud models, a browser client, and a terminal
 client (`hadal cli`) that speaks the same protocol. The prompt is byte-stable within a session, context is pruned before
 it is summarised, and several context features were measured against another harness (see the README's measured
-section). What it does not have yet: more than one engine behind one server, usage history a person can read, and the
-profile page that would make the rail's last button worth its slot.
+section). It does not yet have more than one engine behind one server, usage history a person can read, or the profile page that
+would make the rail's last button worth its slot.
 
 ## Principles
 
@@ -25,18 +25,18 @@ profile page that would make the rail's last button worth its slot.
    data change has a documented undo.
 6. **No AI attribution.** Commits, PRs and docs carry the author's name only.
 
-## Track 1: robustness (server and CLI)
+## Track 1: reliability (server and CLI)
 
 Goal: a run survives anything short of the database being lost.
 
-| Item | What changes | Metric |
-| --- | --- | --- |
-| Stream resilience | Reconnect with backoff on both clients; a reattached tab gets a full view; an interrupted send is retried with the same request id | Runs lost per week: 0 |
-| Run ledger | Every run's start, end, outcome and failure reason is a row a client can read after the fact | Runs with an unknown outcome: 0 |
-| CLI parity | `hadal cli` covers approvals with fields, attachments, `/stop`, model and thinking switches, and `hadal run --json` for scripts | Actions a person must do in a browser, per task: 0 |
-| Crash recovery test | A test kills the server mid-run and asserts the run resumes and the CLI shows the same transcript | Test green in CI |
-| Backpressure | A slow tab is cut off and resyncs instead of holding the server's memory; already bounded for streams, needs a CLI case | RSS under a stalled client: flat |
-| Memory budget | Measure the server with 1, 10 and 100 open sessions; set `MemoryHigh` from the measured figure | RSS per open session: recorded |
+| Item                | What changes                                                                                                                       | Metric                                             |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| Stream resilience   | Reconnect with backoff on both clients; a reattached tab gets a full view; an interrupted send is retried with the same request id | Runs lost per week: 0                              |
+| Run ledger          | Every run's start, end, outcome and failure reason is a row a client can read after the fact                                       | Runs with an unknown outcome: 0                    |
+| CLI parity          | `hadal cli` covers approvals with fields, attachments, `/stop`, model and thinking switches, and `hadal run --json` for scripts    | Actions a person must do in a browser, per task: 0 |
+| Crash recovery test | A test kills the server mid-run and asserts the run resumes and the CLI shows the same transcript                                  | Test green in CI                                   |
+| Backpressure        | A slow tab is cut off and resyncs instead of holding the server's memory; already bounded for streams, needs a CLI case            | RSS under a stalled client: flat                   |
+| Memory budget       | Measure the server with 1, 10 and 100 open sessions; set `MemoryHigh` from the measured figure                                     | RSS per open session: recorded                     |
 
 ## Track 2: closer to the model
 
@@ -115,19 +115,18 @@ at read time for a range. No stored total-only aggregates, so a change to what i
 Leads from Hugging Face's paper index (read 2026-11-17, all unverified here). Each is a candidate experiment under
 Track 2, with the metric named before the work starts.
 
-| Paper | Date | What it suggests | Experiment |
-| --- | --- | --- | --- |
-| [SWE-Pruner: Self-Adaptive Context Pruning for Coding Agents](https://huggingface.co/papers/2601.16746) | 2026-01-23 | The agent decides what to prune from its own task state, not a fixed rule | Compare a model-chosen prune set against the rule-based pruner on the same task: tokens per task, regret |
-| [SWE-Pruner Pro](https://huggingface.co/papers/2607.18213) | 2026-07-20 | The model already knows what to drop; ask it, cheaply | A single tool call asking for prune candidates, timed against the rule set |
-| [LMCache](https://huggingface.co/papers/2510.09665) | 2025-10-08 | A KV cache layer shared across sessions and engines | Measure prefix reuse across sessions on one engine before building anything |
-| [LatentRemedy](https://huggingface.co/papers/2610.18014) | 2026-10-13 | Non-prefix KV reuse for multi-agent work | Only if subagents share long context: hit rate, wall time |
-| [DLite: History-free Speculative Decoding for Agentic AI](https://huggingface.co/papers/2610.23787) | 2026-10-16 | Draft models that do not need the full history | Engine-side, not harness-side: note it for the engine choice |
-| [Small Language Models for Efficient Agentic Tool Calling](https://huggingface.co/papers/2512.15943) | 2025-12-17 | Targeted fine-tuning can beat larger models at tool calls | Informs the conformance suite and role thresholds, not code |
-| [Hearsay: Can an Auditor Trust the Record a Deployed Agent Harness Writes?](https://huggingface.co/papers/2609.32495) | 2026-09-26 | The run record needs to be auditable | Shapes the run ledger's fields and immutability |
-| [Dynamic Harness Search](https://huggingface.co/papers/2610.04137) | 2026-10-02 | Choose the harness shape per query | Too far from the one-loop design: keep as a note |
+| Paper                                                                                                                 | Date       | What it suggests                                                          | Experiment                                                                                               |
+| --------------------------------------------------------------------------------------------------------------------- | ---------- | ------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| [SWE-Pruner: Self-Adaptive Context Pruning for Coding Agents](https://huggingface.co/papers/2601.16746)               | 2026-01-23 | The agent decides what to prune from its own task state, not a fixed rule | Compare a model-chosen prune set against the rule-based pruner on the same task: tokens per task, regret |
+| [SWE-Pruner Pro](https://huggingface.co/papers/2607.18213)                                                            | 2026-07-20 | The model already knows what to drop; ask it, cheaply                     | A single tool call asking for prune candidates, timed against the rule set                               |
+| [LMCache](https://huggingface.co/papers/2510.09665)                                                                   | 2025-10-08 | A KV cache layer shared across sessions and engines                       | Measure prefix reuse across sessions on one engine before building anything                              |
+| [LatentRemedy](https://huggingface.co/papers/2610.18014)                                                              | 2026-10-13 | Non-prefix KV reuse for multi-agent work                                  | Only if subagents share long context: hit rate, wall time                                                |
+| [DLite: History-free Speculative Decoding for Agentic AI](https://huggingface.co/papers/2610.23787)                   | 2026-10-16 | Draft models that do not need the full history                            | Engine-side, not harness-side: note it for the engine choice                                             |
+| [Small Language Models for Efficient Agentic Tool Calling](https://huggingface.co/papers/2512.15943)                  | 2025-12-17 | Targeted fine-tuning can beat larger models at tool calls                 | Informs the conformance suite and role thresholds, not code                                              |
+| [Hearsay: Can an Auditor Trust the Record a Deployed Agent Harness Writes?](https://huggingface.co/papers/2609.32495) | 2026-09-26 | The run record needs to be auditable                                      | Shapes the run ledger's fields and immutability                                                          |
+| [Dynamic Harness Search](https://huggingface.co/papers/2610.04137)                                                    | 2026-10-02 | Choose the harness shape per query                                        | Too far from the one-loop design: keep as a note                                                         |
 
-The rule for all of them: a lead earns code only after a task-set comparison on this machine, and a paper's own numbers
-are never quoted as ours.
+A lead earns code only after a task-set comparison on this machine. A paper's own numbers are never quoted as ours.
 
 ## Milestones
 

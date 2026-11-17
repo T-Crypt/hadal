@@ -70,10 +70,11 @@ monospaced figures and readouts, and cyan as the one signal light. It reads like
 Every text token is measured against the rendered pixels (WCAG AA at all three depths), and signal is only ever a
 mark of the living: nothing glows for decoration ([docs/design/hadal-ui.md](docs/design/hadal-ui.md)).
 
-The look is a coat, not the structure. Appearance carries 24 palettes — Bell itself, the earlier blue depth kept as
-**Zone**, and the Omarchy terminal themes — plus theme folders that restyle parts of the app without touching code
-([docs/extensions/themes.md](docs/extensions/themes.md)), per-theme fonts, and one-tap duplication of any palette or
-theme into your own. Switching any of it changes the paint while every layout, shortcut and behavior stays.
+The look is a coat, not the structure. Appearance carries 24 palettes: Bell, the earlier blue depth kept as **Zone**,
+and the Omarchy terminal themes. Theme folders restyle parts of the app without touching code
+([docs/extensions/themes.md](docs/extensions/themes.md)), each can carry its own fonts, and any palette or theme
+duplicates into your own with one tap. Switching any of it changes the paint while every layout, shortcut and behavior
+stays.
 
 ## Built for local models
 

@@ -1,18 +1,22 @@
 /**
  * Model providers: which ones HADAL knows, whether each is signed in, and sign-ins run from the app. A sign-in asks its
  * questions (an API key, a code, a choice) through the tabs of the person who started it. HADAL shares HADAL's own
- * sign-ins (`~/.pi/agent/auth.json`).
+ * sign-ins (`~/.pi/agent/auth.json`), which is also the default account of every provider: the owner keeps named
+ * accounts of their own beside it (a second Anthropic subscription, a second key of any provider), and the active
+ * one is the one the provider's models run on.
  *
  * A subscription's sign-in (OAuth) counts as signed in for as long as it is stored, even once it can no longer be
  * renewed. So each is asked afresh (the Providers sheet, a model Lantern or a subagent on another model is about to use, a
  * run that failed on it): one its provider refuses to renew is marked as needing sign-in, the model menu marks its
  * models, Lantern and subagents on other models refuse them, and the owner is told, until someone signs in again. A
  * session's own run, a subagent on its model, and titles are not checked first: they try the model, and a run that
- * fails on it marks it.
+ * fails on it marks it. A mark is of an account: switching the active account leaves the other account's mark, and
+ * a limit one account hit is not the next account's.
  */
 import { randomUUID } from "node:crypto";
-import type { AuthPrompt } from "@earendil-works/pi-ai";
+import type { AuthPrompt, Credential, ProviderAuthInteraction } from "@earendil-works/pi-ai";
 import type { ModelRef } from "@earendil-works/pi-durable";
+import { DEFAULT_ACCOUNT } from "./accounts.ts";
 import type { PocketApp } from "./app.ts";
 import type { User } from "./config.ts";
 import { describe, HttpError } from "./errors.ts";
@@ -77,8 +81,8 @@ export class Providers {
     readonly #app: PocketApp;
     readonly #flows = new Map<string, AuthFlow>();
     readonly modelRefresh: ModelRefresh;
-    /** Providers whose sign-in could not be renewed, and what they said. In memory: asked again after a restart. */
-    readonly #expired = new Map<string, string>();
+    /** Providers whose sign-in could not be renewed, and what they said, by the account the mark is of. In memory: asked again after a restart. */
+    #expired = new Map<string, string>();
     /** Checks under way, by provider, so asking twice at once asks once. */
     readonly #checking = new Map<string, Promise<string | undefined>>();
     /**
@@ -92,14 +96,21 @@ export class Providers {
         this.modelRefresh = new ModelRefresh(app);
     }
 
+    /** The key a provider's account marks live under: the provider, and the account the mark is of. */
+    #key(providerId: string, accountId?: string): string {
+        const account = accountId ?? this.#app.accounts.activeOf(providerId).id;
+
+        return `${providerId}\u0000${account}`;
+    }
+
     /** How many sign-ins and sign-outs here a provider has had: a limit that one account hit is not the next one's. */
     signInEpoch(providerId: string): number {
         return this.#signIns.get(providerId) ?? 0;
     }
 
-    /** Why a provider's sign-in needs a person to sign in again, as last asked; undefined when it does not. */
+    /** Why the provider's active account needs a person to sign in again, as last asked; undefined when it does not. */
     needsSignIn(providerId: string): string | undefined {
-        return this.#expired.get(providerId);
+        return this.#expired.get(this.#key(providerId));
     }
 
     /**
@@ -121,23 +132,25 @@ export class Providers {
     async #check(providerId: string): Promise<string | undefined> {
         const models = this.#app.models;
         const began = this.#signIns.get(providerId) ?? 0;
+        // The account being asked is the one active when the check began: a switch meanwhile starts a fresh check.
+        const account = this.#app.accounts.activeOf(providerId).id;
 
         if (!models.isUsingOAuth(providerId)) {
-            this.#clear(providerId);
+            this.#clearKey(this.#key(providerId, account));
 
             return undefined;
         }
 
         try {
             await models.getAuth(providerId, { signal: AbortSignal.timeout(CHECK_MS) });
-            this.#clear(providerId);
+            this.#clearKey(this.#key(providerId, account));
         } catch (error) {
             if (renewalRefused(error) && (this.#signIns.get(providerId) ?? 0) === began) {
-                this.#mark(providerId, chain((error as Error).cause));
+                this.#mark(providerId, account, chain((error as Error).cause));
             }
         }
 
-        return this.#expired.get(providerId);
+        return this.#expired.get(this.#key(providerId, account));
     }
 
     /**
@@ -171,20 +184,22 @@ export class Providers {
         }
     }
 
-    /** A run was answered by a provider's model: when it was marked, ask it again, which clears a mark that is stale. */
+    /** A run was answered by a provider's model: when its active account was marked, ask it again, which clears a mark that is stale. */
     runAnswered(providerId: string): void {
-        if (this.#expired.has(providerId)) {
+        if (this.#expired.has(this.#key(providerId))) {
             void this.check(providerId).catch(() => {});
         }
     }
 
     /**
      * Why HADAL may not use a model now, in words for HADAL to pass on: it is not known here, its provider is not signed in,
-     * or its sign-in expired. `fresh` asks the provider's sign-in again first. Undefined when it may be used.
+     * or the account it runs on expired. `fresh` asks the provider's sign-in again first. Undefined when it may be used.
      */
     async problem(ref: ModelRef, fresh = false): Promise<string | undefined> {
         const models = this.#app.models;
         const name = models.getProvider(ref.provider)?.name ?? ref.provider;
+        const account = this.#app.accounts.activeOf(ref.provider);
+        const whom = account.id === DEFAULT_ACCOUNT ? "" : ` (account ${account.name})`;
 
         if (models.getModel(ref.provider, ref.modelId) === undefined) {
             return `${ref.provider}/${ref.modelId} is not a model known here`;
@@ -198,38 +213,60 @@ export class Providers {
 
         return expired === undefined
             ? undefined
-            : `the sign-in to ${name} expired and could not be renewed: a person must sign in again (Providers)`;
+            : `the sign-in to ${name}${whom} expired and could not be renewed: a person must sign in again (Providers)`;
     }
 
-    #mark(providerId: string, why: string): void {
-        const known = this.#expired.has(providerId);
+    #mark(providerId: string, accountId: string, why: string): void {
+        const key = this.#key(providerId, accountId);
+        const known = this.#expired.has(key);
 
-        this.#expired.set(providerId, why);
+        this.#expired.set(key, why);
 
         if (!known) {
             const name = this.#app.models.getProvider(providerId)?.name ?? providerId;
+            const account = this.#app.accounts.activeOf(providerId);
+            const whose = account.id === DEFAULT_ACCOUNT ? "" : ` (account ${account.name})`;
 
             // The owner's to fix: only they sign in.
             this.#app.ownerNotice(
                 "warning",
-                `The sign-in to ${name} expired and could not be renewed. Sign in again in Providers; until then sessions on its models fail, and Lantern and subagents on other models do not use them.`,
+                `The sign-in to ${name}${whose} expired and could not be renewed. Sign in again in Providers; until then sessions on its models fail, and Lantern and subagents on other models do not use them.`,
             );
             this.#changed();
         }
     }
 
-    #clear(providerId: string): void {
-        if (this.#expired.delete(providerId)) {
+    #clearKey(key: string): void {
+        if (this.#expired.delete(key)) {
             this.#changed();
         }
     }
 
-    /** A sign-in or sign-out here: no mark stays, and a check under way leaves none. */
-    #signedInOrOut(providerId: string): void {
+    /** A sign-in, sign-out, or account switch here: no mark of the provider's accounts stays, and a check under way leaves none. */
+    #signedInOrOut(
+        providerId: string,
+        accountId?: string,
+        resetLimits = true,
+        clearMarks = true,
+    ): void {
         this.#signIns.set(providerId, (this.#signIns.get(providerId) ?? 0) + 1);
-        this.#expired.delete(providerId);
-        // What a gate knew of a limit was about the account that is gone.
-        this.#app.limits.reset(providerId);
+
+        if (clearMarks) {
+            if (accountId === undefined) {
+                for (const key of [...this.#expired.keys()]) {
+                    if (key.startsWith(`${providerId}\u0000`)) {
+                        this.#expired.delete(key);
+                    }
+                }
+            } else {
+                this.#expired.delete(this.#key(providerId, accountId));
+            }
+        }
+
+        // What a gate knew of a limit was about an account the provider does not run on any more.
+        if (resetLimits) {
+            this.#app.limits.reset(providerId);
+        }
     }
 
     /** A mark came or went: tabs get the models marked again, and sessions' views their model's state. */
@@ -240,40 +277,69 @@ export class Providers {
         this.#app.refreshViews();
     }
 
-    /** Every provider and its sign-in. What a provider said when it refused to renew one is for the `owner` only. */
-    list(owner = false) {
+    /** Every provider and its sign-in, with its accounts when it keeps more than the default one. What a provider said when it refused to renew one is for the `owner` only. */
+    async list(owner = false) {
         const models = this.#app.models;
 
-        return models.getProviders().map((provider) => {
-            const status = models.getProviderAuthStatus(provider.id);
-            const expired = this.#expired.get(provider.id);
-            const auth = (
-                provider as {
-                    auth?: { apiKey?: unknown; oauth?: { name?: string; loginLabel?: string } };
-                }
-            ).auth;
-            const catalog = models.getModels(provider.id);
+        return Promise.all(
+            models.getProviders().map(async (provider) => {
+                const status = models.getProviderAuthStatus(provider.id);
+                const expired = this.#expired.get(this.#key(provider.id));
+                const auth = (
+                    provider as {
+                        auth?: { apiKey?: unknown; oauth?: { name?: string; loginLabel?: string } };
+                    }
+                ).auth;
+                const catalog = models.getModels(provider.id);
+                const accounts = this.#app.accounts.accountsOf(provider.id);
+                const multiple = accounts.length > 1;
+                // The default account's sign-in is the shared file's; its kind is what the file holds.
+                const defaultType = await this.#defaultAccountType(provider.id);
 
-            return {
-                id: provider.id,
-                name: provider.name,
-                configured: status.configured,
-                source: status.source ?? null,
-                label: status.label ?? null,
-                apiKey: auth?.apiKey !== undefined,
-                oauth:
-                    auth?.oauth === undefined
-                        ? null
-                        : (auth.oauth.loginLabel ?? auth.oauth.name ?? "Subscription"),
-                models: catalog.length,
-                // The models the pickers offer (`shown` of `models`); the owner narrows them from the sheet.
-                shown: catalog.filter((model) => this.#app.config.showsModel(provider.id, model.id))
-                    .length,
-                ...(expired === undefined
-                    ? {}
-                    : { needsSignIn: owner ? expired : "its provider would not renew it" }),
-            };
-        });
+                return {
+                    id: provider.id,
+                    name: provider.name,
+                    configured: status.configured,
+                    source: status.source ?? null,
+                    label: status.label ?? null,
+                    apiKey: auth?.apiKey !== undefined,
+                    oauth:
+                        auth?.oauth === undefined
+                            ? null
+                            : (auth.oauth.loginLabel ?? auth.oauth.name ?? "Subscription"),
+                    models: catalog.length,
+                    // The models the pickers offer (`shown` of `models`); the owner narrows them from the sheet.
+                    shown: catalog.filter((model) =>
+                        this.#app.config.showsModel(provider.id, model.id),
+                    ).length,
+                    // The account the provider runs on: shown when it keeps more than the default one.
+                    ...(multiple ? { account: this.#app.accounts.activeOf(provider.id) } : {}),
+                    // The owner sees every account and what each needs; others only that one is in use.
+                    ...(owner
+                        ? {
+                              accounts: accounts.map((each) => {
+                                  const mark = this.#expired.get(this.#key(provider.id, each.id));
+
+                                  return {
+                                      ...each,
+                                      // The default account's sign-in is the shared file's; its kind is what the file holds.
+                                      type: each.named ? each.type : defaultType,
+                                      ...(mark === undefined ? {} : { needsSignIn: mark }),
+                                  };
+                              }),
+                          }
+                        : {}),
+                    ...(expired === undefined
+                        ? {}
+                        : { needsSignIn: owner ? expired : "its provider would not renew it" }),
+                };
+            }),
+        );
+    }
+
+    /** What the shared sign-in file holds for a provider, as its default account: api_key or oauth. */
+    async #defaultAccountType(providerId: string): Promise<"api_key" | "oauth" | undefined> {
+        return (await this.#app.accountAuth.baseCredential(providerId))?.type;
     }
 
     /** A provider's whole catalog, by id, with whether the pickers offer each model. */
@@ -440,6 +506,196 @@ export class Providers {
         flow.abort.abort();
     }
 
+    /**
+     * Sign in a new named account of the provider: its own sign-in asks its questions through the person's tabs, and
+     * its answer is kept as the account. It is active at once only when it is the provider's first sign-in; one added
+     * beside a sign-in in use waits for the owner to switch to it.
+     */
+    startAccountLogin(
+        user: User,
+        providerId: string,
+        type: "api_key" | "oauth",
+        name?: string,
+    ): string {
+        const app = this.#app;
+
+        // An endpoint's key goes in its form, which keeps it to its address, and its sign-ins share its queue.
+        if (app.customProviders.list().some((each) => each.id === providerId)) {
+            throw new HttpError(400, "Change an endpoint's key with its Edit button.");
+        }
+
+        const provider = this.#provider(providerId);
+        const method = type === "oauth" ? provider.auth?.oauth : provider.auth?.apiKey;
+
+        if (method?.login === undefined) {
+            throw new HttpError(400, `${provider.name} does not support ${type} sign-ins.`);
+        }
+
+        // A sign-in that would be the provider's first becomes the account it runs on; one beside a sign-in in use does not.
+        const firstSignIn =
+            !app.models.hasConfiguredAuth(providerId) && !app.accounts.hasNamed(providerId);
+
+        const flow: AuthFlow = {
+            id: randomUUID(),
+            userId: user.id,
+            prompts: new Map(),
+            abort: new AbortController(),
+        };
+
+        this.#flows.set(flow.id, flow);
+
+        // Its name, as the Providers sheet shows it, for the dialog's title and the notice when it worked.
+        const providerName = app.models.getProvider(providerId)?.name ?? providerId;
+
+        const send = (data: Record<string, unknown>) => {
+            for (const client of app.clients) {
+                if (client.user.id === user.id) {
+                    client.send("auth", { flowId: flow.id, providerId, providerName, ...data });
+                }
+            }
+        };
+
+        let lastPromptType: AuthPrompt["type"] | undefined;
+
+        const interaction = {
+            signal: flow.abort.signal,
+            prompt: (prompt: AuthPrompt) =>
+                new Promise<string>((resolvePrompt, rejectPrompt) => {
+                    const promptId = randomUUID();
+
+                    lastPromptType = prompt.type;
+                    flow.prompts.set(promptId, {
+                        resolve: resolvePrompt,
+                        reject: rejectPrompt,
+                        requiresKey: type === "api_key" && prompt.type === "secret",
+                    });
+                    const { signal, ...shown } = prompt;
+
+                    signal?.addEventListener("abort", () => {
+                        flow.prompts.delete(promptId);
+                        send({ step: "prompt-closed", promptId });
+                        rejectPrompt(new Error("cancelled"));
+                    });
+                    send({ step: "prompt", promptId, prompt: shown });
+                }),
+            notify: (event: unknown) => send({ step: "event", event }),
+        };
+
+        void this.#addAccount(providerId, type, interaction, name, firstSignIn)
+            .then(
+                () => send({ step: "done", ok: true }),
+                (error: unknown) =>
+                    send({
+                        step: "done",
+                        ok: false,
+                        loginType: type,
+                        error:
+                            type === "oauth" && lastPromptType === "manual_code"
+                                ? "That code was not accepted."
+                                : "Sign-in did not finish. Try again.",
+                        details: describe(error),
+                    }),
+            )
+            .finally(() => this.#flows.delete(flow.id));
+
+        return flow.id;
+    }
+
+    /** The sign-in's own questions, and when it works, the account it becomes. */
+    async #addAccount(
+        providerId: string,
+        type: "api_key" | "oauth",
+        interaction: ProviderAuthInteraction,
+        name: string | undefined,
+        firstSignIn: boolean,
+    ): Promise<void> {
+        const given = (name ?? "").trim();
+        const accountName =
+            given === ""
+                ? (
+                      await interaction.prompt({
+                          type: "text",
+                          message: "Name this account",
+                          placeholder: "Max",
+                      })
+                  ).trim()
+                : given;
+
+        if (accountName.length === 0 || accountName.length > 40) {
+            throw new Error("An account name needs one to 40 characters.");
+        }
+
+        const provider = this.#provider(providerId);
+        let credential: Credential;
+
+        if (type === "oauth") {
+            const login = provider.auth?.oauth?.login;
+
+            if (login === undefined) {
+                throw new Error(`${provider.name} does not support oauth sign-ins.`);
+            }
+
+            credential = await login(interaction, {
+                getDeviceId: () => this.#app.settings.getOrCreateDeviceId(),
+            });
+        } else {
+            const login = provider.auth?.apiKey?.login;
+
+            if (login === undefined) {
+                throw new Error(`${provider.name} does not support api_key sign-ins.`);
+            }
+
+            credential = await login(interaction);
+        }
+
+        const newId = this.#app.accounts.add(providerId, accountName, credential, firstSignIn);
+
+        await this.#app.models.getAvailable().catch(() => []);
+        // Only the account just signed in is cleared of its mark; the others (and their limits) stay.
+        this.#signedInOrOut(providerId, newId, firstSignIn, true);
+        this.#changed();
+    }
+
+    /**
+     * The provider runs on `accountId` from its next request: the default one, or a named one. A mark of another
+     * account's sign-in stays its own, and a limit the provider hit stays with the account it hit it on. The runtime
+     * learns of the switch at once: what it offers the pickers, and what it signs in with, is the account in use.
+     */
+    async setActiveAccount(providerId: string, accountId: string): Promise<void> {
+        this.#provider(providerId);
+
+        if (this.#app.accounts.activeOf(providerId).id === accountId) {
+            return;
+        }
+
+        this.#app.accounts.setActive(providerId, accountId);
+        // A switch changes what runs, but the marks of the accounts not switched to stay as they are.
+        this.#signedInOrOut(providerId, undefined, true, false);
+        await this.#app.models.getAvailable().catch(() => []);
+        this.#changed();
+        // Ask the account now in use afresh: a renewed sign-in that works again clears its mark.
+        void this.check(providerId).catch(() => {});
+    }
+
+    /** A named account goes; when it was the one in use, the default account comes back. */
+    async removeAccount(providerId: string, accountId: string): Promise<void> {
+        this.#provider(providerId);
+
+        if (accountId === DEFAULT_ACCOUNT) {
+            throw new HttpError(
+                400,
+                "The default account is the shared sign-in: Log out removes it.",
+            );
+        }
+
+        this.#app.accounts.remove(providerId, accountId);
+        // The removed account's mark goes with it; the others stay.
+        this.#signedInOrOut(providerId, accountId, true, true);
+        await this.#app.models.getAvailable().catch(() => []);
+        this.#changed();
+        void this.check(providerId).catch(() => {});
+    }
+
     /** Keep `key` as the provider's API-key sign-in, as the API key button does: an endpoint's key, say. */
     storeApiKey(providerId: string, key: string): Promise<void> {
         return this.#signIn(providerId, "api_key", {
@@ -489,14 +745,14 @@ export class Providers {
             getDeviceId: () => this.#app.settings.getOrCreateDeviceId(),
         });
         await this.#app.models.getAvailable().catch(() => []);
-        this.#signedInOrOut(providerId);
+        this.#signedInOrOut(providerId, this.#app.accounts.activeOf(providerId).id);
         this.#changed();
     }
 
     async logout(providerId: string): Promise<void> {
         await this.#app.models.logout(providerId);
         await this.#app.models.getAvailable().catch(() => []);
-        this.#signedInOrOut(providerId);
+        this.#signedInOrOut(providerId, this.#app.accounts.activeOf(providerId).id);
         this.#changed();
     }
 

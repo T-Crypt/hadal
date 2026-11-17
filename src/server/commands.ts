@@ -405,7 +405,7 @@ export class Commands {
     /** Start a session in a folder; with `worktree`, in a git worktree of its own made from that folder. */
     async createSession(
         user: User,
-        request: { cwd?: string; title?: string; worktree?: unknown },
+        request: { cwd?: string; title?: string; worktree?: unknown; client?: string },
         {
             projectDefaults = true,
             model,
@@ -478,6 +478,9 @@ export class Commands {
                                 createdBy: user.id,
                                 ...(title === undefined ? {} : { title }),
                                 ...(worktree === undefined ? {} : { worktree }),
+                                ...(request.client === "terminal"
+                                    ? { client: "terminal" as const }
+                                    : {}),
                             };
                             await init?.(tx, id);
                         },

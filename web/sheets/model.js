@@ -441,14 +441,14 @@ export function ModelPicker() {
                         role="option"
                         aria-selected=${isPicked(model)}
                         disabled=${locked || (sealedHere && model.local !== true)}
-                        title=${`${model.provider}/${model.id} · ${formatTokens(model.contextWindow)} context${model.images ? " · images" : ""}${sealedHere && model.local !== true ? " · not local: this session is locked to local models" : ""}`}
+                        title=${`${model.provider}/${model.id} · ${formatTokens(model.contextWindow)} context${model.images ? " · images" : ""}${model.account ? ` · on account ${model.account}` : ""}${sealedHere && model.local !== true ? " · not local: this session is locked to local models" : ""}`}
                         onMouseMove=${() => index !== active && setPicked(index)}
                         onClick=${() => pick(model)}
                     >
                         <span class="pop-menu-row-text">
                             <span class="pop-menu-row-name">${model.name}</span>
                             <span class="pop-menu-row-sub">
-                                ${model.provider}${!forDefault && isDefault(model) ? " · default" : ""}${model.signIn ? " · needs sign-in" : ""}${sealedHere && model.local === true ? " · local" : ""}
+                                ${model.provider}${model.account ? ` · ${model.account}` : ""}${!forDefault && isDefault(model) ? " · default" : ""}${model.signIn ? " · needs sign-in" : ""}${sealedHere && model.local === true ? " · local" : ""}
                             </span>
                         </span>
                         ${isFavorite(model) && html`<${Icon} name="star" size=${14} />`}

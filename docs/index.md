@@ -45,6 +45,7 @@ A drop-in extension stays when HADAL updates, and the owner can turn it off in t
 - [map.md](map.md): where each part of the code is, and how to add the usual things.
 - [architecture.md](architecture.md): how the parts depend on each other, and the orders that they need.
 - [../notes/RESEARCH.md](../notes/RESEARCH.md): the 2026-10-11 survey of what other harnesses do with context on local models, with measurements; the implemented results are the batteries in the README.
+- [ROADMAP.md](ROADMAP.md): where HADAL goes, with the metric each change must move, and the research leads it draws on.
 - [features.md](features.md): what each feature does, as people use it.
 - [releases.md](releases.md): the weekly release on Fridays, the betas between releases, and how to run a beta.
 - [release-notes.md](release-notes.md): how to write the notes of a release.

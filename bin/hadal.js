@@ -24,4 +24,17 @@ if (fixed && (minor < fixed[0] || (minor === fixed[0] && patch < fixed[1]))) {
 
 // From an npm install, Node needs help to run TypeScript: strip-types.js gives it.
 await import("./strip-types.js");
-await import("../src/launcher/main.ts");
+
+// Two programs under one name: `serve` runs the launcher as it always has, and `cli`/`run` are a terminal tab in a
+// session. A bare `hadal` stays the launcher, so every existing command line works unchanged.
+const sub = process.argv[2];
+
+if (sub === "cli" || sub === "run") {
+    await import("../src/cli/main.ts");
+} else {
+    if (sub === "serve") {
+        process.argv.splice(2, 1);
+    }
+
+    await import("../src/launcher/main.ts");
+}

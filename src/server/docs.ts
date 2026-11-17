@@ -47,6 +47,8 @@ export type SessionMeta = {
     worktree?: Worktree;
     /** The session of HADAL's in the terminal this one continues, and how many messages its file had then. */
     fromPi?: { session: string; count: number };
+    /** Where the session began: "terminal" for `hadal cli`. Default absent (browser). Stored, so an older HADAL ignores it. */
+    client?: "terminal";
     /**
      * The id of the person whose Lantern this is: their assistant, which looks after their other sessions (`pip.ts`). Lantern is
      * kept out of the session list; an older HADAL, which does not know this field, lists it as a session.

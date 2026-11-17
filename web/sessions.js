@@ -841,7 +841,11 @@ function SessionRow({
         session.model,
     ].filter(Boolean);
     // What extensions show on the row, under its title.
-    const chips = sessionChips(session);
+    const chips = [...sessionChips(session)];
+
+    if (session.client === "terminal") {
+        chips.push({ key: "terminal", label: "terminal", title: "Started from the terminal" });
+    }
 
     const counts = session.subagents ?? {};
     const live = (counts.working ?? 0) + (counts.waiting ?? 0);

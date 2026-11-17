@@ -78,6 +78,7 @@ export const SIDEBAR = [
             ["docs/parity.md", "Interface parity"],
             ["docs/map.md", "Project map"],
             ["docs/architecture.md", "Architecture"],
+            ["docs/ROADMAP.md", "Roadmap"],
             ["docs/features.md", "Features"],
             ["docs/releases.md", "Releases and betas"],
             ["docs/release-notes.md", "Release notes"],

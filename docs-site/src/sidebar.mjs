@@ -71,6 +71,7 @@ export const SIDEBAR = [
         items: [
             ["docs/index.md", "Documentation map"],
             ["CONTRIBUTING.md", "Contributing"],
+            ["docs/cli.md", "The terminal client"],
             ["docs/docker.md", "Docker and Podman"],
             ["docs/systemd.md", "systemd service"],
             ["docs/embedders.md", "Embedders"],

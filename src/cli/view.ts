@@ -71,6 +71,8 @@ export class Printer {
     #pending: Approval | undefined;
     #busySince: number | undefined;
     #busy = false;
+    /** What the status line says beside the seconds: the calls so far and the model, kept for each tick. */
+    #statusParts: string[] = [];
     #title: string | undefined;
 
     constructor(options: { thinking: boolean; verbose: boolean; session: number }) {
@@ -145,6 +147,17 @@ export class Printer {
         }
     }
 
+    /** Redraw the status line's seconds. View events alone would leave the clock standing still. */
+    tick(): void {
+        if (!this.#busy || this.#busySince === undefined) {
+            return;
+        }
+
+        const seconds = Math.round((Date.now() - this.#busySince) / 1000);
+
+        showStatus(`  ${[`working ${seconds}s`, ...this.#statusParts].join(" · ")}`);
+    }
+
     /** The run is over: finish the answer's line, and stop the status line. */
     settle(): void {
         if (this.#streamed !== "") {
@@ -153,6 +166,7 @@ export class Printer {
         }
 
         this.#busySince = undefined;
+        this.#statusParts = [];
     }
 
     #entries(entries: Entry[]): void {
@@ -320,21 +334,22 @@ export class Printer {
 
         if (live.busy) {
             this.#busySince ??= Date.now();
-            const seconds = Math.round((Date.now() - this.#busySince) / 1000);
             const tools = live.tools?.length ?? 0;
-            const parts = [`working ${seconds}s`];
+
+            this.#statusParts = [];
 
             if (tools > 0) {
-                parts.push(`${figures(tools)} call${tools === 1 ? "" : "s"}`);
+                this.#statusParts.push(`${figures(tools)} call${tools === 1 ? "" : "s"}`);
             }
 
             if (modelName !== undefined) {
-                parts.push(modelName);
+                this.#statusParts.push(modelName);
             }
 
-            showStatus(`  ${parts.join(" · ")}`);
+            this.tick();
         } else {
             this.#busySince = undefined;
+            this.#statusParts = [];
 
             if (this.#streamed !== "") {
                 endLine();

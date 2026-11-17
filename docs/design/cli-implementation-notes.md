@@ -87,3 +87,26 @@ nothing browser-only), and it added `client: "terminal"` additively. What it got
    a long run redraws often; consider a 250 ms floor.
 5. `settleRun` trusts `printer.busy` plus `answered`; a run that fails before any assistant entry leaves busy false and
    answered false, and `run` would wait until the stream's next event. Add a failure signal from `sessions` or a timeout.
+
+## Release review (2026-11-17, third pass)
+
+What a release review found and what changed, for the next reader.
+
+- **A failed run with no answer left `hadal run` waiting forever.** `settleRun` now ends on a failure too, and waits out
+  a retry or a limit wait first, so it exits on the run's end and not on the first attempt's failure.
+- **A send that never reached the server left `run` attached to an idle session.** It now exits 1 with a line that says
+  so.
+- **The status line's seconds stood still.** Views arrive when something changes, so a long think showed `working 0s`.
+  `Printer.tick()` redraws once a second, and the line is cut to the terminal's width so a narrow window does not wrap
+  it into artifacts.
+- **A server started with `--leave` died when the terminal closed.** The launcher is now spawned detached, with its
+  output in `<data>/cli-server.log` instead of a pipe that would break (EPIPE) once the CLI is gone.
+- **`serverAnswers` took any 200 as HADAL.** It now reads `/api/pocket/info` and requires `{"name":"hadal"}`, so another
+  program on the port is not mistaken for a server.
+- **A first `hadal cli` on a fresh machine said "No token".** The token is read after the attached server has started,
+  which is when it writes one.
+- **`--data` was not a CLI flag**, so a test or a second data folder was impossible and an unknown flag was silently
+  ignored. `--data DIR` sets `HADAL_DIR` for the whole command, and an unknown option exits 2 with a line that says so.
+- `hadal --help` now lists `cli`, `run` and `serve`.
+- Docs: `docs/cli.md` (user guide), a `docs/features.md` entry, `docs/index.md` and the docs site sidebar.
+- CI: a "Check the command line" step loads both programs and prints help before the suite runs.

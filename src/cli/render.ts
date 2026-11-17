@@ -35,12 +35,21 @@ let statusShown = "";
 
 /** Put `text` on the terminal's last row, replacing the last status. Nothing is drawn without a terminal. */
 export function showStatus(text: string): void {
-    if (!status || text === statusShown) {
+    if (!status) {
         return;
     }
 
-    statusShown = text;
-    process.stdout.write(`\r\u001b[2K${dim(text)}`);
+    // Past the terminal's width a status line wraps and leaves the tail of its last drawing behind.
+    const room =
+        process.stdout.columns === undefined ? 120 : Math.max(20, process.stdout.columns - 1);
+    const fitted = text.length > room ? `${text.slice(0, room - 1)}…` : text;
+
+    if (fitted === statusShown) {
+        return;
+    }
+
+    statusShown = fitted;
+    process.stdout.write(`\r\u001b[2K${dim(fitted)}`);
 }
 
 /** Remove the status line, so the next printed line starts clean. */

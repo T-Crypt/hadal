@@ -21,27 +21,27 @@ nothing browser-only), and it added `client: "terminal"` additively. What it got
 
 ## What was changed
 
-| File | Change |
-| --- | --- |
-| `bin/hadal.js` | Strips `serve` before the launcher parses; `cli`/`run` go to `src/cli/main.ts`. |
-| `src/cli/server.ts` (new) | Finds a server by `/api/pocket/info`, starts the launcher when none answers, waits up to 90 s, stops it on exit with SIGTERM then SIGKILL. |
-| `src/cli/events.ts` (new) | SSE reader (multi-line `data:`, comments skipped) and `followStream`, which reconnects 1 s, 2, 4 … 30 s; a 401/403 is fatal, not retried. |
-| `src/cli/view.ts` (new) | `Printer`: entries drawn once by id watermark, the answer streamed as it is written, tool calls on one line, results marked ok/fail, failed runs in red, approvals offered once, `answered`/`busy`/`failed` for `run`'s exit. |
-| `src/cli/render.ts` | Palette from HADAL's tokens, `NO_COLOR` and non-TTY fallback, a status line that is rewritten only on a terminal. |
-| `src/cli/client.ts` | `Flags` type, `--session`, `--new`, `--list`, `--no-start`, `--leave`, `--thinking`, `--verbose`; `apiJson` that carries the server's message; `lastSession` in `cli.json`; `HELP`. |
-| `src/cli/main.ts` | Attached launch, sign-in, list/choose/create, `ensureModel` from `server.defaultModel` then `llama-swap/agent`, header with `/s/<id>`, input loop with `y`/`n`, `/stop`, `/open`, `/help`, `/exit`, `send` with one retry on the same request id, `run` exit code, signals detach without killing the session. |
-| `src/server/docs.ts` | `SessionMeta.client?: "terminal"` (already from the first pass). |
-| `src/server/commands.ts` | `createSession` accepts `client` and stores it when it is `terminal`. |
-| `src/server/http/api.ts` | `POST /api/sessions` passes `client` through only when it is `terminal`. |
-| `web/sessions.js` | A `terminal` chip on sessions that began in the terminal (spreads the cached chips array first). |
-| `web/composer.js` | The model chip says `none` instead of clipping `no mo…` on a phone. |
-| `test/cli.test.ts` (new) | 12 tests: frames, flags, text helpers, drawing a view once, a failed answer, approvals, and the `client` field through `app.sessions`. |
-| `docs/design/cli.md`, `cli-plan.md`, `phone-review.md` | Status, plan status, and the phone review. |
+| File                                                   | Change                                                                                                                                                                                                                                                                                                         |
+| ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bin/hadal.js`                                         | Strips `serve` before the launcher parses; `cli`/`run` go to `src/cli/main.ts`.                                                                                                                                                                                                                                |
+| `src/cli/server.ts` (new)                              | Finds a server by `/api/pocket/info`, starts the launcher when none answers, waits up to 90 s, stops it on exit with SIGTERM then SIGKILL.                                                                                                                                                                     |
+| `src/cli/events.ts` (new)                              | SSE reader (multi-line `data:`, comments skipped) and `followStream`, which reconnects 1 s, 2, 4 … 30 s; a 401/403 is fatal, not retried.                                                                                                                                                                      |
+| `src/cli/view.ts` (new)                                | `Printer`: entries drawn once by id watermark, the answer streamed as it is written, tool calls on one line, results marked ok/fail, failed runs in red, approvals offered once, `answered`/`busy`/`failed` for `run`'s exit.                                                                                  |
+| `src/cli/render.ts`                                    | Palette from HADAL's tokens, `NO_COLOR` and non-TTY fallback, a status line that is rewritten only on a terminal.                                                                                                                                                                                              |
+| `src/cli/client.ts`                                    | `Flags` type, `--session`, `--new`, `--list`, `--no-start`, `--leave`, `--thinking`, `--verbose`; `apiJson` that carries the server's message; `lastSession` in `cli.json`; `HELP`.                                                                                                                            |
+| `src/cli/main.ts`                                      | Attached launch, sign-in, list/choose/create, `ensureModel` from `server.defaultModel` then `llama-swap/agent`, header with `/s/<id>`, input loop with `y`/`n`, `/stop`, `/open`, `/help`, `/exit`, `send` with one retry on the same request id, `run` exit code, signals detach without killing the session. |
+| `src/server/docs.ts`                                   | `SessionMeta.client?: "terminal"` (already from the first pass).                                                                                                                                                                                                                                               |
+| `src/server/commands.ts`                               | `createSession` accepts `client` and stores it when it is `terminal`.                                                                                                                                                                                                                                          |
+| `src/server/http/api.ts`                               | `POST /api/sessions` passes `client` through only when it is `terminal`.                                                                                                                                                                                                                                       |
+| `web/sessions.js`                                      | A `terminal` chip on sessions that began in the terminal (spreads the cached chips array first).                                                                                                                                                                                                               |
+| `web/composer.js`                                      | The model chip says `none` instead of clipping `no mo…` on a phone.                                                                                                                                                                                                                                            |
+| `test/cli.test.ts` (new)                               | 12 tests: frames, flags, text helpers, drawing a view once, a failed answer, approvals, and the `client` field through `app.sessions`.                                                                                                                                                                         |
+| `docs/design/cli.md`, `cli-plan.md`, `phone-review.md` | Status, plan status, and the phone review.                                                                                                                                                                                                                                                                     |
 
 ## The connection between `serve` and `cli`
 
 - One database, one session list. The CLI creates sessions with the same route the browser uses, marked `client:
-  "terminal"`, which is additive: an older server ignores it and an older row lacks it.
+"terminal"`, which is additive: an older server ignores it and an older row lacks it.
 - The browser shows the chip, and the same session at `/s/<id>`; the CLI prints that address in its header and on
   `/open`.
 - Either side may go on with the session. The CLI streams the same view a browser gets, and it joins a session that the
@@ -59,12 +59,12 @@ nothing browser-only), and it added `client: "terminal"` additively. What it got
 - `node --test test/cli.test.ts`: 12 pass.
 - `node --test test/sessions.test.ts`: 14 pass; `extension-sessions` + `linked-sessions`: 31 pass.
 - Manual, against a throwaway server on `:8799` (`--data /tmp/hadal-cli-test2`):
-  - `hadal run -p "say hello again"` printed the header, the user line, a tool call and its result, the answer, then
-    `done`, exit 0.
-  - `hadal cli --list` printed the sessions with `terminal`/`browser` and busy/idle.
-  - `hadal cli --session 21` under a PTY (`script -qec`) drew the session's history and then sent a message.
-  - Attached launch with no server: started one, listed, and stopped it on exit; `--leave` left it running.
-  - `hadal serve --help` and `hadal cli --help` both print the right help.
+    - `hadal run -p "say hello again"` printed the header, the user line, a tool call and its result, the answer, then
+      `done`, exit 0.
+    - `hadal cli --list` printed the sessions with `terminal`/`browser` and busy/idle.
+    - `hadal cli --session 21` under a PTY (`script -qec`) drew the session's history and then sent a message.
+    - Attached launch with no server: started one, listed, and stopped it on exit; `--leave` left it running.
+    - `hadal serve --help` and `hadal cli --help` both print the right help.
 - Phone UI: two headless Chromium runs at 390x844 and 320x700 (screenshots read), plus an element-box measurement; no
   overflow, fields 16px, hit layers present. See `phone-review.md`.
 

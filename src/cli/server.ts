@@ -4,6 +4,8 @@
  */
 import { type ChildProcess, spawn } from "node:child_process";
 import { once } from "node:events";
+import { closeSync, mkdirSync, openSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 /** The launcher this checkout runs, so an attached server is the same build as the CLI beside it. */
@@ -17,16 +19,16 @@ export interface Attached {
     child?: ChildProcess;
 }
 
-/** Whether anything answers on `url`. A 401 is an answer: the server is up and the token is the question. */
+/** Whether a HADAL server answers on `url`. Another program on the port is not one. */
 export async function serverAnswers(url: string): Promise<boolean> {
     try {
         const response = await fetch(`${url}/api/pocket/info`, {
             signal: AbortSignal.timeout(1500),
         });
+        const body = (await response.json().catch(() => undefined)) as
+            { name?: unknown } | undefined;
 
-        await response.body?.cancel().catch(() => {});
-
-        return response.ok;
+        return response.ok && body?.name === "hadal";
     } catch {
         return false;
     }
@@ -54,6 +56,14 @@ export async function reachServer(options: {
     }
 
     const port = new URL(options.url).port || "8787";
+
+    // The server writes to a file, not to this terminal's pipe: it outlives the terminal with `--leave`, and a pipe
+    // whose reader is gone would end it with EPIPE the next time it logged. It runs detached for the same reason, so
+    // closing the terminal does not send it a hangup.
+    const logPath = join(options.data, "cli-server.log");
+
+    mkdirSync(options.data, { recursive: true });
+    const log = openSync(logPath, "a");
     const child = spawn(
         process.execPath,
         [
@@ -68,23 +78,23 @@ export async function reachServer(options: {
             "--cwd",
             options.cwd,
         ],
-        { stdio: ["ignore", "pipe", "pipe"] },
+        { stdio: ["ignore", log, log], detached: true },
     );
-    let output = "";
 
-    const keep = (chunk: Buffer) => {
-        output = `${output}${chunk.toString()}`.slice(-4000);
-    };
+    closeSync(log);
+    child.unref();
 
-    child.stdout?.on("data", keep);
-    child.stderr?.on("data", keep);
+    const output = () => readFileSync(logPath, "utf8").slice(-4000);
+
     options.log(`No server on ${options.url}: starting one.`);
     const startedAt = Date.now();
 
     for (;;) {
         if (child.exitCode !== null) {
+            const tail = output();
+
             throw new Error(
-                `The server stopped while starting (${child.exitCode}).${output === "" ? "" : `\n${output.trim()}`}`,
+                `The server stopped while starting (${child.exitCode}).${tail === "" ? "" : `\n${tail.trim()}\n  Log: ${logPath}`}`,
             );
         }
 

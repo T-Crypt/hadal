@@ -34,4 +34,10 @@ jobs:
             - run: npm run check:web
             - run: npm run lint
             - run: npm run format:check
+            - name: Check the command line
+              # Both programs under one name load, and print help, before the suite starts the server.
+              run: |
+                  node bin/hadal.js --help > /dev/null
+                  node bin/hadal.js cli --help > /dev/null
+                  node bin/hadal.js run --help > /dev/null
             - run: npm test

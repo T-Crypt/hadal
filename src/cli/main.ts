@@ -4,6 +4,7 @@
  * with a "terminal" chip. The run itself lives on the server: closing the terminal does not stop it, and joining the
  * session again picks it up.
  */
+import { resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { resolveDataDir } from "../server/env.ts";
 import {
@@ -33,21 +34,21 @@ if (options.help) {
     process.exit(0);
 }
 
+if (options.unknown !== undefined) {
+    console.error(`Unknown option: ${options.unknown}. Try \`hadal cli --help\`.`);
+    process.exit(2);
+}
+
+// `--data` is the same folder the launcher's `--data` is: the token, the CLI's own files, and the server it starts.
+if (options.data !== undefined) {
+    process.env.HADAL_DIR = resolve(options.data);
+}
+
 const config = loadConfig();
 const serverUrl = (options.server ?? config.serverUrl ?? "http://127.0.0.1:8787").replace(
     /\/$/,
     "",
 );
-const token =
-    options.token ?? process.env.HADAL_TOKEN ?? loadSession()?.token ?? ownerTokenFromDisk();
-
-if (token === undefined || token === "") {
-    console.error(
-        "No token. Run this on the server's machine, set HADAL_TOKEN, or sign in once and pass --token.",
-    );
-    process.exit(1);
-}
-
 const controller = new AbortController();
 let attached: Attached = { started: false };
 let printer: Printer | undefined;
@@ -101,7 +102,18 @@ try {
     await leave(1);
 }
 
-const me = await apiJson<Me>(serverUrl, token, "/api/me").catch((error: Error) => {
+// A server this command started has written the owner token by now, so a first `hadal cli` needs no setup.
+const token =
+    options.token ?? process.env.HADAL_TOKEN ?? loadSession()?.token ?? ownerTokenFromDisk();
+
+if (token === undefined || token === "") {
+    console.error(
+        "No token. Run this on the server's machine, set HADAL_TOKEN, or sign in once and pass --token.",
+    );
+    await leave(1);
+}
+
+const me = await apiJson<Me>(serverUrl, token!, "/api/me").catch((error: Error) => {
     console.error(`  ${error.message}`);
     console.error(dim("  Sign in once in a browser, then pass its token with --token."));
 
@@ -114,13 +126,13 @@ if (me === undefined) {
 
 const person = me as Me;
 
-saveSession({ token });
+saveSession({ token: token! });
 saveConfig({ ...config, serverUrl });
 say(
     `${paint("HADAL", "signal")} ${dim("·")} ${person.user.name} ${dim(`(${person.user.role})`)} ${dim("·")} ${serverUrl}`,
 );
 
-const sessions = await apiJson<SessionSummary[]>(serverUrl, token, "/api/sessions");
+const sessions = await apiJson<SessionSummary[]>(serverUrl, token!, "/api/sessions");
 
 if (options.list) {
     for (const session of sessions) {
@@ -165,15 +177,18 @@ saveConfig({ ...config, serverUrl, lastSession: open });
 
 printer = new Printer({ thinking: options.thinking, verbose: options.verbose, session: open });
 
+// The status line's seconds move on their own: events only say what changed, not how long it has been.
+setInterval(() => printer?.tick(), 1000).unref();
+
 const followed = followStream({
     url: serverUrl,
-    token,
+    token: token!,
     conversation: sessionId!,
     signal: controller.signal,
     onEvent: (event) => {
         if (event.name === "view") {
             printer?.view(event.data);
-            settleRun();
+            settleRun(event.data);
         }
     },
     onLost: (retryInMs) => {
@@ -190,13 +205,23 @@ const followed = followStream({
     }
 });
 
-/** In `run`, exit when the answer to the send has landed and the run is quiet. */
-function settleRun(): void {
+/**
+ * In `run`, exit when the answer to the send has landed and the run is quiet. A retry or a limit wait is not the end:
+ * the server is about to try again, so a failure drawn then is not the answer either.
+ */
+function settleRun(view: unknown): void {
     if (mode !== "run" || !sent || printer === undefined) {
         return;
     }
 
-    if (printer.busy || !printer.answered) {
+    const live = (view as { live?: { generation?: { retry?: unknown }; limit?: unknown } }).live;
+
+    if (printer.busy || live?.generation?.retry !== undefined || live?.limit !== undefined) {
+        return;
+    }
+
+    // A failure is an end too: a run that never wrote an answer still has to let `run` exit.
+    if (!printer.answered && !printer.failed) {
         return;
     }
 
@@ -309,7 +334,9 @@ if (mode === "cli") {
     answers.on("line", (line) => void onLine(line));
     answers.on("close", () => void leave(0));
 } else if (options.prompt !== undefined) {
-    await send(options.prompt);
+    if (!(await send(options.prompt))) {
+        await leave(1, paint("  the message did not reach the server", "err"));
+    }
 } else {
     console.error('  nothing to run: pass -p "text"');
     await leave(1);

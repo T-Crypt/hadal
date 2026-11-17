@@ -128,6 +128,7 @@ export async function apiJson<T>(
 export interface Flags {
     token?: string;
     server?: string;
+    data?: string;
     cwd: string;
     prompt?: string;
     session?: number;
@@ -138,6 +139,8 @@ export interface Flags {
     thinking: boolean;
     verbose: boolean;
     help: boolean;
+    /** The first option this command does not know, so a typo fails instead of being skipped. */
+    unknown?: string;
 }
 
 export function flags(argv: string[]): Flags {
@@ -160,6 +163,8 @@ export function flags(argv: string[]): Flags {
             result.token = value();
         } else if (arg === "--server") {
             result.server = value();
+        } else if (arg === "--data") {
+            result.data = value();
         } else if (arg === "--cwd") {
             result.cwd = value() ?? result.cwd;
         } else if (arg === "-p" || arg === "--prompt") {
@@ -180,6 +185,8 @@ export function flags(argv: string[]): Flags {
             result.verbose = true;
         } else if (arg === "--help" || arg === "-h") {
             result.help = true;
+        } else if (arg.startsWith("-")) {
+            result.unknown = arg;
         }
     }
 
@@ -199,6 +206,7 @@ Usage:
 
 Options:
   --server URL    Where the server is (default http://127.0.0.1:8787)
+  --data DIR      The data folder (default ~/.hadal, the same as HADAL_DIR)
   --token TOKEN   The owner token or a browser sign-in token (default: this data folder's owner token)
   --cwd DIR       Folder for a new session (default: the folder you are in)
   -p, --prompt    The message to send (with \`run\`)

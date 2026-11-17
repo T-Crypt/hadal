@@ -7,6 +7,9 @@ import { env, resolveDataDir } from "../server/env.ts";
 const HELP = `HADAL: a self-hosted agent harness, built for local models.
 
 Usage: hadal [options]
+       hadal cli [options]         work in a session from this terminal (hadal cli --help)
+       hadal run -p "text"         send one message, wait for the run, and exit
+       hadal serve                 run the server without the app (the same as hadal)
 
   -a, --access MODE   How other devices reach this server:
                         local            this device only

@@ -40,6 +40,7 @@ A drop-in extension stays when HADAL updates, and the owner can turn it off in t
 - [extensions/policies/](extensions/policies/index.md): the rules for extensions and changes to HADAL: what belongs in core, the public API and how it changes, the security model for authors, and the gallery's review.
 - [self-editing.md](self-editing.md): how to change HADAL's code while it runs, check the change, and undo a change that breaks it.
 - [embedders.md](embedders.md): the app bridge, for an embedder (an app that shows HADAL inside itself, such as an Electron or Tauri wrapper): `/api/pocket/info`, `window.pocketHost`, and notifications without Web Push.
+- [cli.md](cli.md): `hadal cli` and `hadal run`, the terminal as a tab in a session: how it connects, what it draws, and its exit codes.
 - [docker.md](docker.md): running HADAL in a container, with extensions, themes, HADAL's folder, and the workspace mounted from the host.
 - [systemd.md](systemd.md): running HADAL as a systemd service, with a template unit whose instance name is the access mode.
 - [map.md](map.md): where each part of the code is, and how to add the usual things.

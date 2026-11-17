@@ -2044,7 +2044,7 @@ defineItem("composer", {
             onClick=${() => openSheet({ type: "model" })}
         >
             <span class="knob-lab">model</span>
-            <span class="model-name">${view.router ? view.router.label : shortModel(agent)}</span>
+            <span class="model-name">${view.router ? view.router.label : agent?.model ? shortModel(agent) : "none"}</span>
             ${level && html`<span class="model-level">${level}</span>`}
             <${Icon} name="chevron" size=${12} stroke=${2.2} class="model-caret" />
         </button>`,

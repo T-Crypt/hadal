@@ -13,9 +13,10 @@
     <a href="#what-it-is">What it is</a> ·
     <a href="#what-it-does">What it does</a> ·
     <a href="#the-look">The look</a> ·
-    <a href="#built-for-one-gpu">Built for one GPU</a> ·
+    <a href="#built-for-local-models">Built for local models</a> ·
     <a href="#measured">Measured</a> ·
     <a href="#quick-start">Quick start</a> ·
+    <a href="#command-line">Command line</a> ·
     <a href="#roadmap">Roadmap</a>
 </p>
 
@@ -31,9 +32,10 @@ organises four things:
 | **Environments** A project folder with its sessions, files, branch, changes and lessons. | **Agents** Sessions at work, their subagents, roles, routers, and Lantern, the assistant that watches the rest. |
 | **Capabilities** Models and engines, extensions, skills, hooks, memory and browser use.  | **Activity** What is running, what waits for your approval, schedules, spend and reports.                       |
 
-It is tuned for a self-hosted model on one card: a small, stable prompt prefix, no surprise model swaps, requests
-that take turns by model, and context that is pruned before it is summarised. Each change that touches the prompt
-is measured on the same task, model and server before it stays. Cloud providers work through the same loop.
+It is tuned for self-hosted models: a small, stable prompt prefix, no surprise model swaps, requests that take turns
+by model or endpoint, and context that is pruned before it is summarised. One card, several cards, or a rack of
+engines reachable on your network all work through the same loop, and cloud providers use it too. Each change that
+touches the prompt is measured on the same task, model and server before it stays.
 
 <p align="center">
     <img src="site/shots/desktop.webp" alt="HADAL on a desktop, mid-session" width="80%">
@@ -73,11 +75,15 @@ The look is a coat, not the structure. Appearance carries 24 palettes — Bell i
 ([docs/extensions/themes.md](docs/extensions/themes.md)), per-theme fonts, and one-tap duplication of any palette or
 theme into your own. Switching any of it changes the paint while every layout, shortcut and behavior stays.
 
-## Built for one GPU
+## Built for local models
+
+Any OpenAI-compatible endpoint works, in any number: llama-swap or llama.cpp on one card, several engines on one
+machine, or a few workstations on your network. HADAL queues requests per model, keeps a run on the engine that holds
+its cache, and shows what is loading or waiting. Nothing assumes one GPU.
 
 | Feature                       | What it does                                                                                                                                        |
 | ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| One GPU, many sessions        | Requests to llama-swap take turns by model; a run keeps the card between its tool calls; the status line shows a model loading or waiting           |
+| Many sessions, any backend    | Requests take turns by model; a run keeps its engine between tool calls; the status line shows a model loading or waiting                           |
 | Waiting subagents             | `subagent` with `wait: true` returns the answer as the call's result, so the parent writes nothing while a stage runs and the stage keeps its cache |
 | Agent definitions             | `subagent` takes `agent: <name>` and loads that role's instructions, model, thinking level, tools and skills                                        |
 | KV-prefix discipline          | The system prompt is byte-stable; the one line that changes by itself (the date) sits last, so a cache hit stays a hit all day                      |
@@ -164,19 +170,42 @@ are still read. [docs/features.md](docs/features.md) lists each one.
 > HADAL's own settings and tokens, and its code. Invite only people you would trust at your keyboard. View-only users
 > cannot make the agent act. [SECURITY.md](SECURITY.md) says what is protected and what is not.
 
+## Command line
+
+The terminal is a client, not a second app. `hadal` is the server and its launcher; `hadal cli` is one tab in a
+session, using the same database and the same tab protocol a browser does.
+
+```bash
+hadal serve                     # the launcher: pick how devices connect, then run the server
+hadal cli                        # join the last session you used here, or start one
+hadal cli --session 12           # join the session open in the browser at /s/12
+hadal run -p "run the tests"     # send one message, wait for the run, exit 0, or 1 if it failed
+```
+
+`hadal cli` signs in with the owner token kept in the data folder, so on the server's machine there is nothing to set
+up. With no server on the port it starts the launcher, waits until it answers, and stops it on exit unless you pass
+`--leave`. It holds neither lock, so it can run beside `hadal serve` and a browser, all on one server.
+
+The run lives on the server. Ctrl+C detaches and prints the command to come back with; closing the terminal does not
+stop the work, and a server restart does not lose it, because the CLI reconnects to the stream and the reattached view
+brings everything it missed. A session the CLI made carries a `terminal` chip in the browser's session list, and the
+same session opens at `/s/<id>`.
+
+The transcript draws as it arrives: the answer as it is written, each tool call on one line with its result, a failed
+run in red, and approvals with a `y` or `n` answer. `/stop` stops the run, `/open` prints the browser address, and
+`/exit` detaches. `--list`, `--new`, `--thinking`, `--verbose`, `--no-start` and `hadal cli --help` cover the rest.
+
 ## Roadmap
 
-- **Interface.** The Bell look is the default now: steel depths, near-square geometry, and the readout typography,
-  on the measured tokens ([docs/design/hadal-ui.md](docs/design/hadal-ui.md)). Next the shell on the same tokens:
-  the environments-first navigator, a status readout rail, the composer as a console tray, and panels that dock
-  beside the transcript on a wide screen. Every existing shortcut, command, gesture and palette carries over;
-  `docs/parity.md` is the checklist.
-- **Server.** Measure memory first, then unload idle rooms, bound slow clients, and start the browser on first use.
-- **Living harness.** The prompt in three zones (a fixed core, a loadout that changes only when it pays, a short
-  tail with the objective and budget), skills mounted and unmounted from a registry, live pruning with recall,
-  sourced knowledge lanes, a ledger of what worked, and profiles per model architecture, starting with Qwen4.
-- **Second browser engine.** [Kitesurf](https://github.com/cloudflare/kitesurf), run locally, as a backup to
-  Chromium for reading and screenshots.
+The plan for the next year is in [docs/ROADMAP.md](docs/ROADMAP.md): a harness that sits closer to the model, a code
+dashboard for usage and commits, multi-machine setups, and the interface shell on the Bell tokens.
+
+- **Durable by default.** Every run, tool call and subagent is recorded as it happens, by the server, for every client.
+- **Closer to the model.** One prefix that stays byte-stable, context pruned before it is summarised, and profiles per
+  model architecture, starting with the Qwen family.
+- **Many machines.** Several engines and workstations behind one server, each request to the engine that can serve it.
+- **A profile that earns its rail slot.** Commits, token usage and averages for the week, month and year, next to the
+  sessions and settings a person already has.
 
 ## Development
 

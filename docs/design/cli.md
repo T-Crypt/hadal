@@ -106,3 +106,106 @@ and prints the run as it arrives, including a tool call's one line and a failure
 an afternoon, the rest of the plan is wrong and it is cheap to know now. If it feels good, add: pick the folder, answer
 an approval, a fork, and the `client: "terminal"` chip. Nothing on that list needs a new route that `http/api.ts` and
 `commands.ts` do not already serve, which is the thing to verify first.
+
+---
+
+## Recommendations (2026-11-17)
+
+Items to address or implement, drawn from the DeepSeek DSH harness, the local vision docs (`homelab/projects/active/hadal/PLAN.md`), and OMP CLI visual improvements, for a `hadal cli` tuned to HADAL's face. Full version: artifact `hadal-cli-recommendations`.
+
+### From DSH
+
+- Headless one-shot: `hadal cli -p "<prompt>"` (or `hadal run`), model from settings, not flags.
+- Profile/preset layering: ship `lab` and `lab-full` presets that disable dangerous loops; presets re-read on every call.
+- Declare per-model context windows in settings; do not inherit a default.
+- Compaction per model (0.8 x real ctx, retain ~0.16), applied via overlay, not preset edits.
+- Reasoning effort wiring per model: `off / low / medium / high`.
+- Bound retry policy for the JIT backend (< 5 eager retries).
+- Explicit compat flags on the route: developer role, `max_tokens`, usage in stream.
+- Tailnet-only publishing: CLI never binds 0.0.0.0.
+- Token handling: login token rotates on restart; stable credential is the `browser-session` grant.
+- Sandbox: shell runs under bwrap; document the prerequisite.
+- Document the whole-row patch replace gotcha.
+
+### From the local vision docs
+
+- Registry, zones, epochs: CLI status shows mounted loadout and sounding.
+- Objective with done-when: CLI prints the check result; `Esc Esc` stops.
+- Lanes and brief on demand via `/brief`; do not print every turn.
+- Live pruning shown as `[pruned: ..., recall <id>]` plus a `recall` command.
+- Ledger: CLI writes rows like the web UI.
+- Architecture profiles in the model picker, with conformance score.
+- Measure first (S1): the CLI must not raise steady-state RSS or open a second harness instance.
+
+### From OMP CLI
+
+- Model roles: `--smol`, `--slow`, `--plan`, `--goal`, mapped to HADAL router stages; keep `!fast` / `!deep` / `!role`.
+- Advisor runtime (`--advisor`) mapped to the review stage.
+- Approval modes: `--approval-mode` (always-ask, cached, write, yolo).
+- Session export to HTML (`--export`).
+- Profile isolation (`--profile`).
+- Modes (`--mode`: text, json, rpc, rpc-ui).
+- Extension flags (`--hook`, `-e/--extension`, `--no-extensions`, `--no-skills`, `--skills`).
+- LSP and PTY toggles (`--no-lsp`, `--no-pty`).
+- Crash restore (`--restore`) including subagents.
+- Limits (`--max-time`, `--auto-approve`).
+- Defer import from Claude/Codex.
+
+### Visual tuning to HADAL's face
+
+- One palette from HADAL tokens: `#E5F1FC` on `#050D19`, signal `#65D9FF`, second voice `#9B8AFF`, ok `#72E6C1`, warn `#F0C674`, err `#FF8A9B`, muted `#526B82` (non-text only).
+- Mark as progress spinner; status line with tokens/s, TTFT, context % in tabular mono; live line with elapsed time.
+- Tool calls as one-line trace nodes (hollow running, filled ok, cross on failure).
+- Approval plate in warn color, command shown whole, keys shown.
+- Atlas-like session list on start.
+- Respect `NO_COLOR` and reduced motion.
+
+### Contract and safety
+
+- Write the CLI contract first (actions and routes), in the style of `docs/parity.md` but shorter.
+- Answer approvals over the same route; offer "open in browser" for diffs.
+- The CLI must not import `PocketApp` or open `harness.lock`.
+- Hold neither `launcher.lock` nor `harness.lock`; ask the launcher to start a server.
+
+### Defer
+
+Files tile, Browser panel, diff review screen, subagents board, peek tiles, per-person theming, import from Claude/Codex.
+
+### Smallest first step
+
+`hadal cli` signs in over loopback, lists sessions, joins one, submits what you type, and prints the run as it arrives, including a tool call's one line and a failure's reason. Verify `http/api.ts` and `commands.ts` already serve every action on that list before building screens.
+
+## Concurrency (2026-11-17)
+
+`hadal serve` and `hadal cli` are independent processes that may run at the same time.
+
+- `hadal serve` runs the server and its web UI; `hadal cli` is a tab that talks to it over loopback.
+- `hadal cli` with no server on the port may start one (attached launch) and shut it down on exit, unless `--leave`.
+- Sessions started from the CLI are ordinary sessions in the same database, so they appear in the web UI with no new plumbing. The `client: "terminal"` field records where a session began; it does not restrict who can open it.
+- Neither process holds an exclusive lock that blocks the other: the CLI holds neither `launcher.lock` nor `harness.lock`. Attached launch spawns the launcher child and waits for readiness.
+- If both are live, they share one server; the CLI never starts a second harness.
+
+## Built (2026-11-17)
+
+The first pass is in `src/cli/`: `main.ts` (the tab), `client.ts` (sign-in, files, the protocol's calls), `events.ts`
+(the stream and its reconnects), `view.ts` (what a view draws), `render.ts` (palette, status line), `server.ts` (find
+or start a server). `bin/hadal.js` sends `cli` and `run` there, and strips `serve` for the launcher.
+
+What it does:
+
+- `hadal cli` signs in over loopback, joins the last session it used (or asks, with a numbered list), and types in it.
+- `hadal run -p "text"` sends one message, waits for the run to finish, and exits 0, or 1 after a failed answer.
+- `hadal cli --session 12` picks up a session the browser started; `--list` prints the sessions and exits.
+- With no server on the port it starts the launcher (the same process `hadal serve` runs), waits until it answers, and
+  stops it on the way out unless `--leave` was given. The CLI holds neither lock.
+- The event stream reconnects on its own (1 s, then doubling to 30 s), and every reattach brings the session's full
+  view, so a server restart under the tab loses nothing. The run itself is durable on the server: Ctrl+C detaches and
+  prints `hadal cli --session <id>`.
+- The transcript draws as it arrives: the answer as it is written, each tool call on one line with its result, a failed
+  run in red, and an approval prompt that takes `y` or `n`. `/stop` aborts the run, `/open` prints the browser address.
+- A session the CLI made carries `client: "terminal"`, and the browser's session list shows it as a `terminal` chip.
+  The same session is at `/s/<id>`, and either client can go on with it: the state is the server's, not the tab's.
+- `NO_COLOR`, `TERM=dumb`, and no TTY fall back to plain text; the status line is drawn only on a terminal.
+
+Not built yet: a full-screen TUI (the CLI prints lines, it does not paint a screen), attachments, diffs, and the
+Files/Browser panels. `--leave`, attached launch, `--session`, and the chip are done.

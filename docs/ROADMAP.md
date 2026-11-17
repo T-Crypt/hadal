@@ -110,6 +110,17 @@ at read time for a range. No stored total-only aggregates, so a change to what i
   surface kept one row tall.
 - **CLI**: a `--json` mode for scripts, and a compact status line that reads well at 80 columns.
 
+## Track 6: secrets that never reach the model
+
+Goal: a token pasted into a session is kept, used by commands, and never sent to the provider or stored in plain text.
+Design and the first slice: [design/secrets.md](design/secrets.md).
+
+- **Named values.** A paste becomes `[npm token]`, encrypted at rest with a key in the data folder.
+- **Use without seeing.** Commands get the value in their environment; the model reads the name only.
+- **Masked everywhere it shows.** Tool output, later messages, session titles, and the CLI.
+- **Metric:** plain-text hits for a saved value in the database, the logs, and the provider request: zero, checked by a
+  test that greps for it.
+
 ## Research intake
 
 Leads from Hugging Face's paper index (read 2026-11-17, all unverified here). Each is a candidate experiment under

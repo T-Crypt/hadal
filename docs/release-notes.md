@@ -20,6 +20,34 @@ The notes are for people who run HADAL, and some of them read on a phone. Each r
 - **The app reads the warning.** Menu → Update HADAL asks the owner to confirm a release whose notes have a `[!WARNING]` or `[!CAUTION]` alert, never installs it by itself, and does not go back from it by itself. So put every step that a person must do by hand, or that cannot be undone, in that alert. Updates run `npm ci` (a git checkout) or `npm install -g` (a global npm install) and restart by themselves. A release must be on the npm registry's `latest` tag for an npm install to take it (a beta is on `beta`, for people who turn on beta updates), and the notes come from the GitHub release of the same version. [releases.md](releases.md) tells when releases and betas come out.
 - **Keep the review story short and folded** in a `<details>` block. Always say what was not tested.
 
+## The style
+
+The notes read like a person telling another person what changed, in the order they would ask. What makes them work:
+
+- **The opener names the release in one line.** No "we are excited". "A terminal client, named provider accounts, and a
+  roadmap." A person knows in five words whether this release is for them.
+- **The update line comes before the features.** `[!IMPORTANT]` with one line, and the honest answer that no step is
+  needed by hand when that is true. The details stay under Updating.
+- **Highlights are the same items as below, said shorter.** Each one names the outcome, not the part: "Ctrl+C detaches,
+  a restart reconnects, and nothing that happened meanwhile is lost", not "the event stream reconnects with backoff".
+- **A section per kind of change, not per module.** New, Improved, Fixed. A person reads the section that matches what
+  they noticed, and skips the rest.
+- **Fixed items start with the symptom.** "`hadal run` waited forever when a run failed before writing an answer." The
+  new behavior goes in the next sentence. A person who met the bug recognizes it in three words.
+- **Numbers go in the bullet when there are numbers.** Exit codes, counts of tests, a percentage. They make a claim
+  checkable and they are what people quote back.
+- **An additive field says what to do when it is absent.** In "For theme and extension authors", name the field, say
+  older rows leave it out, and say the safe default. That is the whole instruction an author needs.
+- **Updating is numbered, and it ends with what happens to open clients.** "Every open terminal client reconnects by
+  itself after the restart" is the line a person on a phone wants before they tap update.
+- **The check block is folded, short, and it says what was not tested.** Five bullets at most: the commands, the suite
+  with its real numbers, the manual paths, then `**Not tested:**`. A note that hides its gaps reads as marketing; one
+  that names them reads as true.
+- **No internal names, no AI attribution, no em dashes.** The release page is part of the product.
+
+Length target: 40 to 80 lines of Markdown for a release with several changes. A small release is shorter. If a section
+would hold one weak bullet, leave the section out.
+
 ## The template
 
 ```markdown
@@ -82,3 +110,59 @@ The notes are for people who run HADAL, and some of them read on a phone. Each r
 ### The title
 
 `HADAL A.B.C: <2 to 4 headline changes, in plain words>`, under about 80 characters.
+
+## A worked example
+
+The notes of v0.29.0, which this page's style comes from:
+
+```markdown
+A terminal client, named provider accounts, and a roadmap.
+
+> [!IMPORTANT]
+> **To update:** Menu → Update HADAL in the app, or `npm install` in a git checkout, then restart if the update did
+> not. Nothing in the stored data needs a step by hand.
+
+### Highlights
+
+- **A terminal client.** `hadal cli` joins a session from this machine's terminal, draws the run as it arrives, and
+  answers approvals with a `y` or `n`. `hadal run -p "text"` sends one message and exits 0, or 1 after a failed run.
+- **One session, both clients.** A session the terminal made shows a `terminal` chip in the browser's list, and opens
+  at `/s/<id>`. The run lives on the server: Ctrl+C detaches, a restart reconnects, and nothing that happened
+  meanwhile is lost.
+
+### Fixed
+
+- **`hadal run` waited forever** when a run failed before writing an answer. It now exits 1 at the run's end, after
+  any retry or limit wait.
+- **A server started with `--leave` died when its terminal closed.** It now runs detached, logs to `cli-server.log`
+  in the data folder, and outlives the terminal.
+
+### For theme and extension authors
+
+- **`client` on a session.** A row of `GET /api/sessions` can carry `client: "terminal"` when the terminal made it;
+  earlier rows and browser sessions leave it out, so treat a missing value as a browser session.
+
+### Updating
+
+1. In the app: Menu → Update HADAL.
+2. In a git checkout: `npm install`, then restart HADAL.
+3. Every open terminal client reconnects by itself after the restart, and shows the whole session again.
+
+<details>
+<summary>How this release was checked</summary>
+
+- `npm run check`, `npm run lint`, `npm run format:check`, and the docs site build with every link checked.
+- The full test suite on this machine: 1993 tests, 1982 passed. The 2 failures were browser-guest timeouts under
+  load; the file passed 3 of 3 when run alone, and CI skips browser tests.
+- The terminal client by hand: a first run on a fresh data folder, attached launch with and without `--leave`,
+  `--list`, `--session`, the failure exit code, and a stream reconnect across a server restart.
+- **Not tested:** approvals that need typed fields in the terminal (it says to answer in the browser); a memory
+  figure for a CLI process.
+
+</details>
+```
+
+What to copy from it: the flat opener, the update line before anything else, symptoms in Fixed, the additive-field
+instruction, numbered steps that end with what open clients do, and a check block that names its two gaps. The full
+page, with its screenshots of nothing and its whole list of sections, is at
+<https://github.com/T-Crypt/hadal/releases/tag/v0.29.0>.

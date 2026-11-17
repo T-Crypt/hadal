@@ -964,7 +964,7 @@ export function createApi(options: HttpOptions, auth: Auth) {
                 await app.providers.checkAll(3_000);
             }
 
-            return json(response, 200, app.providers.list(user.role === "owner"));
+            return json(response, 200, await app.providers.list(user.role === "owner"));
         }
 
         if (
@@ -998,7 +998,7 @@ export function createApi(options: HttpOptions, auth: Auth) {
             app.providers.setVisible(second, asked);
 
             return json(response, 200, {
-                providers: app.providers.list(),
+                providers: await app.providers.list(),
                 models: app.providers.modelsFor(second),
             });
         }
@@ -1029,6 +1029,68 @@ export function createApi(options: HttpOptions, auth: Auth) {
         ) {
             requireOwner(user);
             await app.providers.logout(second);
+
+            return json(response, 200, { ok: true });
+        }
+
+        // A new named account of a provider: its own sign-in runs, and its answer is kept as the account.
+        if (
+            first === "providers" &&
+            second !== undefined &&
+            third === "accounts" &&
+            method === "POST"
+        ) {
+            requireOwner(user);
+            const body = await readJson<{ type?: string; name?: unknown }>(request);
+            const name = typeof body.name === "string" ? body.name : undefined;
+
+            if (name !== undefined && name.trim().length > 40) {
+                throw new HttpError(400, "An account name needs one to 40 characters.");
+            }
+
+            return json(response, 200, {
+                flowId: app.providers.startAccountLogin(
+                    user,
+                    second,
+                    body.type === "oauth" ? "oauth" : "api_key",
+                    name,
+                ),
+            });
+        }
+
+        // The provider runs on the account named: the default one, or a named one the owner keeps.
+        if (
+            first === "providers" &&
+            second !== undefined &&
+            third === "active" &&
+            method === "POST"
+        ) {
+            requireOwner(user);
+            const body = await readJson<{ account?: unknown }>(request);
+
+            if (
+                typeof body.account !== "string" ||
+                body.account === "" ||
+                body.account.length > 64
+            ) {
+                throw new HttpError(400, "Say which account.");
+            }
+
+            await app.providers.setActiveAccount(second, body.account);
+
+            return json(response, 200, await app.providers.list(true));
+        }
+
+        if (
+            first === "providers" &&
+            second !== undefined &&
+            third === "accounts" &&
+            fourth !== undefined &&
+            method === "DELETE"
+        ) {
+            requireOwner(user);
+
+            await app.providers.removeAccount(second, fourth);
 
             return json(response, 200, { ok: true });
         }

@@ -22408,3 +22408,57 @@ pre.gallery-code {
         min-height: 34px;
     }
 }
+
+/* A provider's accounts, and which is in use. */
+.provider-accounts {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px 14px 14px;
+    background: var(--bg-2);
+    border-top: 1px solid var(--line);
+}
+
+.provider-accounts > .label {
+    font-size: 11.5px;
+    font-weight: 500;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.provider-account {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 10px;
+    border-radius: var(--r);
+    background: var(--bg);
+    border: 1px solid var(--line);
+}
+
+.provider-account.active {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+}
+
+.provider-account-info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.provider-account-inuse {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.provider-accounts-add {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding-top: 4px;
+}

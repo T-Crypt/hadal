@@ -47,6 +47,7 @@ import type { ExecutionEnv } from "@earendil-works/pi-durable/env";
 import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import { CodingTools } from "@earendil-works/pi-durable/tools";
+import { AccountCredentialStore, AccountStore } from "./accounts.ts";
 import { type AgentDefinition, listAgents } from "./agents.ts";
 import { Alerts } from "./alerts.ts";
 import { Attribution, type Missing } from "./attribution.ts";
@@ -58,6 +59,7 @@ import { ExtensionSessions } from "./extension-sessions.ts";
 import { LinkedSessions } from "./linked-sessions.ts";
 import { removeAvatar, saveAvatar } from "./avatars.ts";
 import { APP_ROOT, ConfigStore, modulesWith, type User } from "./config.ts";
+import { FileCredentialStore } from "./credential-file.ts";
 import { type ContextMeter, contextMeter } from "./context-meter.ts";
 import {
     ArtifactAssetDoc,
@@ -424,6 +426,10 @@ export class PocketApp {
     access: AccessInfo | undefined;
     harness!: Harness;
     models!: ModelRuntime;
+    /** The owner's named accounts, by provider, beside each one's default sign-in. */
+    accounts!: AccountStore;
+    /** The credential store the model runtime signs in with: the shared file, and a named account in use. */
+    accountAuth!: AccountCredentialStore;
     settings!: SettingsManager;
     loader!: ExtensionLoader;
     readonly commands = new Commands(this);
@@ -882,7 +888,11 @@ export class PocketApp {
             this.#log(`HTTP setup failed, using Node defaults: ${describe(error)}`);
         }
 
-        this.models = await ModelRuntime.create();
+        const signIns = new FileCredentialStore();
+
+        this.accounts = new AccountStore(join(this.dataDir, "accounts.json"));
+        this.accountAuth = new AccountCredentialStore(signIns, this.accounts);
+        this.models = await ModelRuntime.create({ credentials: this.accountAuth });
         // Closest to the wire: a sealed session's request to a model that is not local fails before anything is sent,
         // whichever wrapper above sends it (a retry, a replay, a route to another model).
         installLockGate(this.models as never, this.folderLocks, this.locality, (sessionId) =>
@@ -2851,7 +2861,17 @@ export class PocketApp {
                   }))
                 : { scopedModels: [] };
 
-        const list = modelList(this.models, this.config, this.signInNeeded, scopedModels);
+        const list = modelList(
+            this.models,
+            this.config,
+            this.signInNeeded,
+            scopedModels,
+            (provider) => {
+                const accounts = this.accounts.accountsOf(provider);
+
+                return accounts.length > 1 ? accounts.find((each) => each.active)!.name : undefined;
+            },
+        );
 
         // Which are local, for a locked session's picker: names are looked up once, then kept for ten minutes. With
         // nothing locked, only what needs no lookup (an address, localhost) is marked: no request waits on DNS.

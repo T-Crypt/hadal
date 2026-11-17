@@ -35,8 +35,8 @@ after(async () => {
 });
 
 /** The provider as the Providers sheet sees it. */
-function provider() {
-    return app.providers.list().find((each) => each.id === "faux")!;
+async function provider() {
+    return (await app.providers.list()).find((each) => each.id === "faux")!;
 }
 
 /** What a picker holds for `faux`: the models the hello carries, as the web app's model list does. */
@@ -49,7 +49,7 @@ async function offered(): Promise<string[]> {
 test("a provider offers every model it has until the owner chooses", async () => {
     assert.deepEqual(await offered(), ["alpha", "beta", "gamma"]);
     assert.deepEqual(
-        { models: provider().models, shown: provider().shown },
+        { models: (await provider()).models, shown: (await provider()).shown },
         { models: 3, shown: 3 },
     );
 });
@@ -58,7 +58,7 @@ test("the models chosen are the ones the pickers offer", async () => {
     app.providers.setVisible("faux", ["beta"]);
     assert.deepEqual(await offered(), ["beta"]);
     assert.deepEqual(
-        { models: provider().models, shown: provider().shown },
+        { models: (await provider()).models, shown: (await provider()).shown },
         { models: 3, shown: 1 },
     );
     assert.deepEqual(app.providers.modelsFor("faux"), [
@@ -71,7 +71,7 @@ test("the models chosen are the ones the pickers offer", async () => {
 test("no models chosen offers none, and every model comes back", async () => {
     app.providers.setVisible("faux", []);
     assert.deepEqual(await offered(), []);
-    assert.equal(provider().shown, 0);
+    assert.equal((await provider()).shown, 0);
 
     app.providers.setVisible("faux", null);
     assert.deepEqual(await offered(), ["alpha", "beta", "gamma"]);

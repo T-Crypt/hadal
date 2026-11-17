@@ -90,7 +90,8 @@ after(async () => {
     cleanUp();
 });
 
-const listed = () => app.providers.list(true).find((provider) => provider.id === "expiring");
+const listed = async () =>
+    (await app.providers.list(true)).find((provider) => provider.id === "expiring");
 const marked = () =>
     modelList(app.models, undefined, app.signInNeeded).find((model) => model.id === "exp-1");
 
@@ -98,7 +99,7 @@ test("a sign-in that cannot be renewed needs sign-in: the sheet, the models, and
     // A network that fails on the way changes nothing.
     refusal = new Error("token refresh error: fetch failed");
     await app.providers.checkAll();
-    assert.equal(listed()?.needsSignIn, undefined);
+    assert.equal((await listed())?.needsSignIn, undefined);
     assert.equal(marked()?.signIn, undefined);
     assert.ok(renewed.length > 0, "the renewal was tried");
 
@@ -118,10 +119,13 @@ test("a sign-in that cannot be renewed needs sign-in: the sheet, the models, and
         "a guest is not told",
     );
 
-    assert.match(String(listed()?.needsSignIn), /invalid_grant/);
+    assert.match(String((await listed())?.needsSignIn), /invalid_grant/);
     // Only the owner sees what the provider said.
     assert.doesNotMatch(
-        String(app.providers.list().find((provider) => provider.id === "expiring")?.needsSignIn),
+        String(
+            (await app.providers.list()).find((provider) => provider.id === "expiring")
+                ?.needsSignIn,
+        ),
         /invalid_grant/,
     );
     assert.equal(marked()?.signIn, true);
@@ -140,7 +144,7 @@ test("a sign-in that cannot be renewed needs sign-in: the sheet, the models, and
 test("a run that fails on it marks it, and a sign-in that works again clears the mark", async () => {
     refusal = undefined;
     await app.providers.checkAll();
-    assert.equal(listed()?.needsSignIn, undefined, "renewed: no mark");
+    assert.equal((await listed())?.needsSignIn, undefined, "renewed: no mark");
     assert.equal(marked()?.signIn, undefined);
 
     // It runs out again, and a session on it fails.
@@ -153,8 +157,11 @@ test("a run that fails on it marks it, and a sign-in that works again clears the
         thinkingLevel: "off",
     });
     await say(app, id, "hello");
-    await until(() => listed()?.needsSignIn !== undefined, "the mark from the failed run");
-    assert.match(String(listed()?.needsSignIn), /invalid_grant/);
+    await until(
+        async () => (await listed())?.needsSignIn !== undefined,
+        "the mark from the failed run",
+    );
+    assert.match(String((await listed())?.needsSignIn), /invalid_grant/);
     // The session shows its model as not available.
     assert.equal(
         agentInfo(app.models, (await app.agentState(id))!, work, app.signInNeeded).available,
@@ -164,5 +171,8 @@ test("a run that fails on it marks it, and a sign-in that works again clears the
     // Signed in again outside the app (HADAL's terminal app, say): the next answer from it clears the mark.
     refusal = undefined;
     await say(app, id, "hello again");
-    await until(() => listed()?.needsSignIn === undefined, "the mark cleared by an answer");
+    await until(
+        async () => (await listed())?.needsSignIn === undefined,
+        "the mark cleared by an answer",
+    );
 });

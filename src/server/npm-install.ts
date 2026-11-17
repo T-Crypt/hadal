@@ -2,7 +2,7 @@
 import { execFile } from "node:child_process";
 import { constants, existsSync } from "node:fs";
 import { access, realpath } from "node:fs/promises";
-import { dirname, join, resolve, sep } from "node:path";
+import { basename, dirname, join, resolve, sep } from "node:path";
 import { updatePaths } from "./update-state.ts";
 
 export type InstallKind = "git" | "npm-global" | "npm-local" | "npx" | "unknown";
@@ -56,8 +56,12 @@ export async function npmInstallKind(appRoot: string): Promise<InstallKind> {
         .then((path) => realpath(path))
         .catch(() => undefined);
     const parent = await realpath(dirname(root)).catch(() => dirname(root));
+    // A scoped name installs one folder deeper: `<global>/@scope/<name>`. Its scope folder stands between
+    // the package and the global root, so the folder that holds the scope is the one to compare.
+    const above = basename(parent).startsWith("@") ? dirname(parent) : parent;
+    const owner = above === parent ? parent : await realpath(above).catch(() => above);
 
-    if (global !== undefined && parent === global) {
+    if (global !== undefined && owner === global) {
         return "npm-global";
     }
 

@@ -14,10 +14,12 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
+import { PACKAGE } from "../src/server/brand.ts";
 import { npmCommand } from "../src/server/npm-install.ts";
 import { stageNpmUpdate } from "../src/server/npm-update.ts";
 import {
     finishNpmPending,
+    PACKAGE_NAMES,
     readOutcome,
     readPending,
     restorePackage,
@@ -30,9 +32,20 @@ import {
     type PendingUpdate,
 } from "../src/server/update-state.ts";
 
+/** Where npm puts a package inside a `node_modules` folder: a scoped name sits under its scope folder. */
+const packageTail = (name: string): string[] => name.split("/");
+
+test("the name people install is one the update state can read back", () => {
+    assert.ok(
+        PACKAGE_NAMES.includes(PACKAGE),
+        `${PACKAGE} must be listed in PACKAGE_NAMES, or an update cannot read its own version`,
+    );
+    assert.deepEqual(packageTail(PACKAGE), ["@t-crypt", "hadal"], "npm nests a scoped name");
+});
+
 function manifest(root: string, version: string): void {
     mkdirSync(root, { recursive: true });
-    writeFileSync(join(root, "package.json"), JSON.stringify({ name: "hadal", version }));
+    writeFileSync(join(root, "package.json"), JSON.stringify({ name: PACKAGE, version }));
 }
 
 function pending(root: string, fields: Partial<PendingUpdate> = {}): PendingUpdate {
@@ -67,8 +80,8 @@ function sandbox() {
     const prefix = join(dir, "global prefix");
     const root =
         process.platform === "win32"
-            ? join(prefix, "node_modules", "hadal")
-            : join(prefix, "lib", "node_modules", "hadal");
+            ? join(prefix, "node_modules", ...packageTail(PACKAGE))
+            : join(prefix, "lib", "node_modules", ...packageTail(PACKAGE));
     const env = {
         ...process.env,
         npm_config_cache: join(dir, "cache"),
@@ -96,7 +109,7 @@ function sandbox() {
     };
 
     const pack = (name: string, release: string, fail = false) => {
-        const source = join(dir, `${name}-${release}${fail ? "-fail" : ""}`);
+        const source = join(dir, `${name.replace("/", "-")}-${release}${fail ? "-fail" : ""}`);
 
         mkdirSync(join(source, "node_modules", "pocket-fixture-dep"), { recursive: true });
         writeFileSync(
@@ -113,7 +126,7 @@ function sandbox() {
             JSON.stringify({
                 name,
                 version: release,
-                bin: { [name]: "bin.js" },
+                bin: { [name.split("/").at(-1)!]: "bin.js" },
                 dependencies: { "pocket-fixture-dep": "1.0.0" },
                 bundledDependencies: ["pocket-fixture-dep"],
                 ...(fail ? { scripts: { install: 'node -e "process.exit(7)"' } } : {}),
@@ -134,8 +147,8 @@ test("npm stages a real offline tarball, swaps whole packages, and rolls back wi
     const { dir, prefix, root, env, npm, pack } = fixture;
 
     t.after(() => rmSync(dir, { recursive: true, force: true }));
-    const old = pack("hadal", "1.0.0");
-    const fresh = pack("hadal", "2.0.0");
+    const old = pack(PACKAGE, "1.0.0");
+    const fresh = pack(PACKAGE, "2.0.0");
 
     npm(["install", "--global", "--prefix", prefix, old]);
     const paths = updatePaths(root);
@@ -176,8 +189,8 @@ test("npm stage failures leave the live package and pending state unchanged", as
 
     t.after(() => rmSync(dir, { recursive: true, force: true }));
     manifest(root, "1.0.0");
-    const fresh = pack("hadal", "2.0.0");
-    const failing = pack("hadal", "3.0.0", true);
+    const fresh = pack(PACKAGE, "2.0.0");
+    const failing = pack(PACKAGE, "3.0.0", true);
 
     pending(root, { toVersion: "3.0.0" });
     await assert.rejects(
@@ -216,7 +229,7 @@ test("npm ignores the dot sibling during ls, another global install, and uninsta
     const { dir, root, prefix, npm, pack } = sandbox();
 
     t.after(() => rmSync(dir, { recursive: true, force: true }));
-    const first = pack("hadal", "1.0.0");
+    const first = pack(PACKAGE, "1.0.0");
     const other = pack("pocket-fixture-other", "1.0.0");
 
     npm(["install", "--global", "--prefix", prefix, first]);
@@ -232,7 +245,7 @@ test("npm ignores the dot sibling during ls, another global install, and uninsta
     assert.equal(".hadal-update" in listing.dependencies, false);
     npm(["install", "--global", "--prefix", prefix, other]);
     assert.equal(readFileSync(join(state.dir, "sentinel"), "utf8"), "keep");
-    npm(["uninstall", "--global", "--prefix", prefix, "hadal"]);
+    npm(["uninstall", "--global", "--prefix", prefix, PACKAGE]);
     assert.equal(existsSync(root), false);
     assert.equal(readFileSync(join(state.dir, "sentinel"), "utf8"), "keep");
     assert.equal(

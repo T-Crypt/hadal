@@ -17,10 +17,19 @@ import {
     rmSync,
     writeFileSync,
 } from "node:fs";
-import { basename, dirname, join, relative, resolve } from "node:path";
+import { basename, dirname, join, relative, resolve, sep } from "node:path";
 
 /** The folder in the checkout, which `.gitignore` leaves out. */
 export const UPDATE_DIR = ".pocket-update";
+
+/**
+ * The npm names this package has shipped under, oldest first. A version is read from a manifest
+ * that names one of them only, so a foreign folder is never taken for the live package, and an
+ * install of a name before the scope can still update. `PACKAGE` in `brand.ts` is the current name,
+ * and `test/npm-update.test.ts` holds the two in step. This file runs in the launcher too, so it
+ * imports nothing but Node and names the list here.
+ */
+export const PACKAGE_NAMES = ["hadal", "@t-crypt/hadal"];
 
 /** An update under way, written before staging or changing the live package or checkout. */
 export type PendingUpdate = {
@@ -277,20 +286,47 @@ export function restoreModules(appRoot: string): boolean {
     return true;
 }
 
-/** The package npm installs with an isolated global prefix. Its dependencies stay inside it. */
+/**
+ * The package npm installs with an isolated global prefix. Its dependencies stay inside it. A
+ * scoped name sits under its scope folder, so the path follows the live package's own npm name.
+ */
 export function stagedPackagePath(appRoot: string): string {
     const { staging } = updatePaths(appRoot);
+    const base =
+        process.platform === "win32"
+            ? join(staging, "node_modules")
+            : join(staging, "lib", "node_modules");
 
-    return process.platform === "win32"
-        ? join(staging, "node_modules", "hadal")
-        : join(staging, "lib", "node_modules", "hadal");
+    return join(base, ...packageTail(appRoot));
+}
+
+/**
+ * Where npm puts this package inside a `node_modules` folder: its name, split for a scope. The live
+ * package's own manifest answers while it is there. Between two package copies the path says the
+ * same thing, and that is the case `restoreMissingNpmPackage` handles, where the live folder is gone.
+ */
+function packageTail(appRoot: string): string[] {
+    const name = text(readJson(join(appRoot, "package.json"))?.name);
+
+    if (name !== undefined && name !== "") {
+        return name.split("/");
+    }
+
+    const parts = resolve(appRoot).split(sep);
+    const at = parts.lastIndexOf("node_modules");
+
+    return at === -1 ? [basename(appRoot)] : parts.slice(at + 1);
 }
 
 /** Read without importing package code: the launcher can use this after a package rename. */
 function packageVersion(root: string): string | undefined {
     const manifest = readJson(join(root, "package.json"));
 
-    return manifest?.name === "hadal" ? text(manifest.version) : undefined;
+    return manifest !== undefined &&
+        typeof manifest.name === "string" &&
+        PACKAGE_NAMES.includes(manifest.name)
+        ? text(manifest.version)
+        : undefined;
 }
 
 function npmPending(appRoot: string): PendingUpdate {

@@ -37,6 +37,7 @@ import {
     writePending,
 } from "./update-state.ts";
 import { atLeast, compareReleases } from "./versions.ts";
+import { PACKAGE } from "./brand.ts";
 
 /** A release: its tag (`v0.23.0`), version, and notes (undefined when only the tag was found). */
 export type Release = {
@@ -355,7 +356,7 @@ export async function npmRelease(
     beta = false,
 ): Promise<Release> {
     const timeout = AbortSignal.timeout(20_000);
-    const response = await fetch("https://registry.npmjs.org/hadal", {
+    const response = await fetch(`https://registry.npmjs.org/${encodeURIComponent(PACKAGE)}`, {
         headers: {
             accept: "application/vnd.npm.install-v1+json",
             "user-agent": "hadal-updates",
@@ -808,7 +809,7 @@ export class Updates {
 
                 if (!(await npmWritable(this.#root))) {
                     blockers.push(
-                        `The server's user cannot write to ${this.#root} and its global node_modules folder. Update it as the user who owns it with \`npm install -g hadal@${dist}\` (a system install may need sudo).`,
+                        `The server's user cannot write to ${this.#root} and its global node_modules folder. Update it as the user who owns it with \`npm install -g ${PACKAGE}@${dist}\` (a system install may need sudo).`,
                     );
                 }
 
@@ -820,9 +821,9 @@ export class Updates {
             } else if (!local.git) {
                 blockers.push(
                     installKind === "npm-local"
-                        ? `This is a local npm install. Update it with \`npm install hadal@${dist}\` in that project, then start it again.`
+                        ? `This is a local npm install. Update it with \`npm install ${PACKAGE}@${dist}\` in that project, then start it again.`
                         : installKind === "npx"
-                          ? `This copy runs with npx. Stop it, then run \`npx hadal@${dist}\`.`
+                          ? `This copy runs with npx. Stop it, then run \`npx ${PACKAGE}@${dist}\`.`
                           : "This copy of HADAL is not a git checkout. Update it the way you installed it.",
                 );
             } else if (gitVersion !== undefined && !atLeast(gitVersion, MIN_GIT)) {

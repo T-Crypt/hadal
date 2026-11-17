@@ -1,7 +1,7 @@
 {
     "name": "hadal",
     "private": true,
-    "version": "0.28.2",
+    "version": "0.29.0",
     "description": "A self-hosted agent harness, built for local models.",
     "keywords": [
         "pi",

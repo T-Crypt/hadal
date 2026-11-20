@@ -412,6 +412,8 @@ export interface PocketHost {
               model: ModelRef;
               name: string;
               thinkingLevels: ModelThinkingLevel[];
+              /** Whether the model takes images (its catalog `input` lists "image"). */
+              images: boolean;
               contextWindow?: number;
               cost?: { input: number; output: number };
           }

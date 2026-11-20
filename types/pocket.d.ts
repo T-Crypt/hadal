@@ -133,6 +133,8 @@ export interface Host {
               model: ModelRef;
               name: string;
               thinkingLevels: ModelThinkingLevel[];
+              /** @since 0.30.0, whether the model takes images (its catalog `input` lists "image") */
+              images: boolean;
               /** @since 0.20.0, tokens; 0 when unknown */
               contextWindow?: number;
               /** @since 0.20.0, dollars per million tokens; left out when unknown or free */

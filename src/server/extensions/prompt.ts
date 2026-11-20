@@ -80,6 +80,22 @@ export function formatSkills(skills: readonly Skill[]): string {
     return `<skills>\nWhen a task matches a skill's description, read its SKILL.md with the read tool and follow it. Resolve a relative path in it against the skill's folder.\n\n${blocks.join("\n\n")}\n</skills>`;
 }
 
+/**
+ * Which model this session runs on, and whether it reads images. Without it a model has to guess its own vision, and a
+ * local model that guesses "text only" works every picture out with code instead of looking at it.
+ */
+export function modelNote(spec: string, images: boolean | undefined): string {
+    if (images === true) {
+        return `Your model: ${spec}. It reads images: to look at an image file (png, jpg, gif, webp), open it with the read tool, which sends it to you as an attachment. Look at an image before you analyze it with code, and use code to measure or check what you see.`;
+    }
+
+    if (images === false) {
+        return `Your model: ${spec}. It does not read images: the read tool cannot show you one, so work with an image through code.`;
+    }
+
+    return `Your model: ${spec}.`;
+}
+
 const STALE_MS = 30_000;
 
 type Resources = {
@@ -161,6 +177,22 @@ export default function createPrompt(host: PocketHost) {
             section("environment", (input) => {
                 // No date here: the day changes on its own, and the today extension keeps it behind every stable section.
                 return `Working directory: ${cwdOf(input)}\nPlatform: ${process.platform}`;
+            }),
+            // Changes only when the session switches model, and a switch starts a fresh cache anyway.
+            section("model", (input) => {
+                const ref = input.agent.model;
+
+                if (ref === undefined) {
+                    return undefined;
+                }
+
+                const spec = `${ref.provider}/${ref.modelId}`;
+
+                // A test host may have no modelInfo.
+                const info =
+                    typeof host.modelInfo === "function" ? host.modelInfo(spec) : undefined;
+
+                return modelNote(spec, info?.images);
             }),
         ],
     });

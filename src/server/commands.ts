@@ -1992,18 +1992,16 @@ export class Commands {
             );
         }
 
-        // A session in a locked folder keeps to local models (`folder-lock.ts`): said here, not at its next request.
-        if (
-            request.model !== undefined &&
-            model !== undefined &&
-            app.folderLocks.guarding &&
-            app.sealedConversation(id) &&
-            !(await app.locality.check(model))
-        ) {
-            throw new HttpError(
-                409,
-                "This session is locked to local models: its folder is locked. Pick a model on this machine, the LAN, or the tailnet.",
-            );
+        // A session in a locked folder keeps to its lock's policy (`folder-lock.ts`): said here, not at its next request.
+        if (request.model !== undefined && model !== undefined) {
+            const problem = await app.lockModelProblem(id, {
+                provider: model.provider,
+                modelId: model.id,
+            });
+
+            if (problem !== undefined) {
+                throw new HttpError(409, problem);
+            }
         }
 
         const wanted = (request.thinkingLevel ??

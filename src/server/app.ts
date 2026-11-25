@@ -7,7 +7,7 @@
  * `alerts.ts`, provider sign-ins in `providers.ts`, and each conversation's shared live view in `room.ts`.
  */
 import { homedir, hostname } from "node:os";
-import { isAbsolute, join } from "node:path";
+import { isAbsolute, join, posix } from "node:path";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { clampThinkingLevel, type ModelThinkingLevel } from "@earendil-works/pi-ai";
 import {
@@ -1799,8 +1799,7 @@ export class PocketApp {
         call: { host: string; path?: string },
     ): { decision: "allow" | "block" | "ask"; reason?: string } {
         const sealed = this.sealedPolicy(conversationId);
-        const lock =
-            sealed?.path === undefined ? undefined : this.folderLocks.lockFor(sealed.path);
+        const lock = sealed?.path === undefined ? undefined : this.folderLocks.lockFor(sealed.path);
         const mappings = this.folderLocks.remoteLocks(call.host);
 
         if (mappings.length === 0) {
@@ -1837,12 +1836,64 @@ export class PocketApp {
                 withinRemote(call.path!, entry.path),
         );
 
-        return own === undefined
-            ? {
-                  decision: "block",
-                  reason: `This session is sealed to ${describePolicy(sealed.policy)}. It may use only the remote copies of ${lock?.path ?? "its lock"}.`,
-              }
-            : { decision: "allow" };
+        if (own === undefined) {
+            return {
+                decision: "block",
+                reason: `This session is sealed to ${describePolicy(sealed.policy)}. It may use only the remote copies of ${lock?.path ?? "its lock"}.`,
+            };
+        }
+
+        // A deeper lock along the same remote path keeps its own policy: a parent's copy cannot open a child's.
+        const deep = this.folderLocks.lockFor(
+            join(own.lock.path, posix.relative(own.path, call.path!)),
+        );
+
+        if (deep !== undefined && deep.path !== own.lock.path) {
+            const ref = this.#agents.get(conversationId)?.model;
+            const model =
+                ref === undefined ? undefined : this.models.getModel(ref.provider, ref.modelId);
+            const origin =
+                model === undefined
+                    ? undefined
+                    : classify({
+                          provider: model.provider,
+                          id: model.id,
+                          local: this.locality.known(model) === true,
+                      });
+
+            if (origin === undefined || !allows(deep.policy, origin)) {
+                return {
+                    decision: "block",
+                    reason: `${call.path} is also inside ${deep.path}, which allows ${describePolicy(deep.policy)}.`,
+                };
+            }
+        }
+
+        return { decision: "allow" };
+    }
+
+    /** Why a conversation may not use a model, under its lock's policy; undefined when it may. */
+    async lockModelProblem(
+        id: ConversationId,
+        ref: { provider: string; modelId: string },
+    ): Promise<string | undefined> {
+        const sealed = this.sealedPolicy(id);
+
+        if (sealed === undefined) {
+            return undefined;
+        }
+
+        const model = this.models.getModel(ref.provider, ref.modelId);
+
+        if (model === undefined || (await this.locality.check(model))) {
+            return undefined;
+        }
+
+        const origin = classify({ provider: model.provider, id: model.id, local: false });
+
+        return allows(sealed.policy, origin)
+            ? undefined
+            : `This session is locked to ${describePolicy(sealed.policy)}: its folder is locked. Pick a model that policy allows.`;
     }
 
     /** Whether a conversation's current model is local. */

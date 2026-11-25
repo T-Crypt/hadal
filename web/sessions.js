@@ -38,7 +38,6 @@ import {
     foldsNow,
     folderLockOf,
     openId as markedOpen,
-    setFolderLock,
     toggleFoldedLinked,
 } from "./store.js";
 import { prefetchRunning } from "./running-board.js";
@@ -2441,9 +2440,9 @@ function AllSessions({ compact = false }) {
                               html`<span
                                   class="env-seal"
                                   data-part="env-seal"
-                                  title=${`Locked to local models: ${sealedBy.path}`}
+                                  title=${`Locked: ${sealedBy.path} (${sealedBy.policy?.scope === "anthropic" ? "claude" : (sealedBy.policy?.scope ?? "local")})`}
                                   ><${Icon} name="lock" size=${11} /><span class="env-seal-word"
-                                      >local</span
+                                      >${sealedBy.policy?.scope === "anthropic" ? "claude" : (sealedBy.policy?.scope ?? "local")}</span
                                   ></span
                               >`
                           }
@@ -2476,9 +2475,9 @@ function AllSessions({ compact = false }) {
                               <button
                                   class=${`group-action env-lock ${sealedBy ? "on" : ""}`}
                                   data-part="env-lock"
-                                  title=${sealedBy ? `Unlock ${sealedBy.path}` : `Lock ${envPath} to local models`}
-                                  aria-label=${sealedBy ? `Unlock ${sealedBy.path}` : `Lock ${envPath} to local models`}
-                                  onClick=${() => setFolderLock(sealedBy ? sealedBy.path : envPath, !sealedBy)}
+                                  title=${sealedBy ? `Lock settings for ${sealedBy.path}` : `Lock ${envPath}`}
+                                  aria-label=${sealedBy ? `Lock settings for ${sealedBy.path}` : `Lock ${envPath}`}
+                                  onClick=${() => openSheet({ type: "lock", path: sealedBy ? sealedBy.path : envPath })}
                               >
                                   <${Icon} name="lock" size=${12} />
                               </button>

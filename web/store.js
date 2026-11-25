@@ -785,23 +785,24 @@ export function folderLockOf(path) {
 }
 
 /**
- * Lock or unlock a folder to local models (owner only). Locking says what it means first: every session working there
- * keeps to local models for good, and every other session stops seeing it.
+ * Lock a folder, or change its policy (owner only): what may see it, and the copies to hide. The server seals every
+ * session working there, and the seal lasts after an unlock.
  */
-export async function setFolderLock(path, locked) {
-    const ask = locked
-        ? `Lock ${path} to local models?\n\nSessions working in it will only use models on this machine, the LAN, or the tailnet, and stay that way even if you unlock it later. Every other session, and every cloud model, stops seeing what is inside.`
-        : `Unlock ${path}?\n\nSessions that worked in it stay on local models. Other sessions can see the folder again.`;
+export async function lockFolder(path, policy, hide = []) {
+    const view = await api("folder-locks/lock", { path, policy, hide });
 
-    if (!confirm(ask)) {
-        return;
-    }
+    store.set({ folderLocks: view });
 
-    await attempt(async () => {
-        store.set({
-            folderLocks: await api(`folder-locks/${locked ? "lock" : "unlock"}`, { path }),
-        });
-    });
+    return view;
+}
+
+/** Unlock a folder (owner only). Sessions sealed while it was locked stay sealed. */
+export async function unlockFolder(path) {
+    const view = await api("folder-locks/unlock", { path });
+
+    store.set({ folderLocks: view });
+
+    return view;
 }
 
 export async function api(path, body, options = {}) {

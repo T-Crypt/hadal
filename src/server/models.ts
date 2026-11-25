@@ -44,6 +44,8 @@ type ModelSummary = {
     scoped?: true;
     /** Its provider's sign-in expired and could not be renewed: it works again once someone signs in. */
     signIn?: true;
+    /** The name of the account the provider runs on, when it keeps more than its default one. */
+    account?: string;
 };
 
 /** Whether a provider's sign-in expired and needs a person to sign in again (`Providers.needsSignIn`). */
@@ -79,28 +81,35 @@ function capabilities(model: Model<Api>) {
 
 /**
  * The models people can pick: the ones with a configured sign-in, marked when that sign-in needs renewing; when
- * `config` is given, only the models the owner offers the pickers in the Providers sheet.
+ * `config` is given, only the models the owner offers the pickers in the Providers sheet. `accountName` names the
+ * account a provider runs on, when it keeps more than its default one.
  */
 export function modelList(
     models: ModelRuntime,
     config?: Pick<ConfigStore, "showsModel">,
     signInNeeded: SignInNeeded = () => false,
     scopedModels: readonly ScopedModel[] = [],
+    accountName: (provider: string) => string | undefined = () => undefined,
 ): ModelSummary[] {
     const scoped = new Set(scopedModels.map(({ model }) => `${model.provider}/${model.id}`));
 
     return models
         .getAvailableSnapshot()
         .filter((model) => config === undefined || config.showsModel(model.provider, model.id))
-        .map((model) => ({
-            provider: model.provider,
-            id: model.id,
-            name: model.name,
-            contextWindow: model.contextWindow,
-            ...capabilities(model),
-            ...(scoped.has(`${model.provider}/${model.id}`) ? { scoped: true as const } : {}),
-            ...(signInNeeded(model.provider) ? { signIn: true as const } : {}),
-        }));
+        .map((model) => {
+            const account = accountName(model.provider);
+
+            return {
+                provider: model.provider,
+                id: model.id,
+                name: model.name,
+                contextWindow: model.contextWindow,
+                ...capabilities(model),
+                ...(scoped.has(`${model.provider}/${model.id}`) ? { scoped: true as const } : {}),
+                ...(signInNeeded(model.provider) ? { signIn: true as const } : {}),
+                ...(account === undefined ? {} : { account }),
+            };
+        });
 }
 
 /** A signed-in model by `provider/id`, or by id alone; undefined when there is none. */
@@ -130,6 +139,7 @@ export function modelInfo(models: ModelRuntime, spec: string) {
               model: { provider: model.provider, modelId: model.id },
               name: model.name,
               thinkingLevels: capabilities(model).levels as ModelThinkingLevel[],
+              images: capabilities(model).images,
               contextWindow: model.contextWindow,
               // Dollars per million tokens; left out when the catalog has no price.
               ...(model.cost.input > 0 || model.cost.output > 0

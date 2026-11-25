@@ -249,6 +249,8 @@ const ENDPOINT_KEYS = {
     none: "no key",
     missing: "no key set",
 };
+/** A provider's accounts, by the kind of sign-in each holds. */
+const ACCOUNT_KINDS = { oauth: "subscription", api_key: "API key" };
 
 const modelCount = (n) => `${n} ${n === 1 ? "model" : "models"}`;
 
@@ -263,11 +265,12 @@ function aboutOf(provider, endpoint) {
     }
 
     const account = provider.label || SOURCES[provider.source] || provider.source;
+    const inUse = provider.account ? ` · ${provider.account.name}` : "";
     const signIn = provider.needsSignIn
         ? "the sign-in expired and could not be renewed: sign in again. Until then, sessions " +
           "on its models fail, and Lantern and subagents on other models do not use them"
         : provider.configured
-          ? `signed in${account ? ` · ${account}` : ""}`
+          ? `signed in${account ? ` · ${account}` : ""}${inUse}`
           : "not configured";
 
     const counted =
@@ -333,6 +336,8 @@ export function ProvidersSheet() {
     const [search, setSearch] = useState("");
     const loginButton = useRef(null);
     const load = () => attempt(async () => setProviders(await api("providers")));
+    // The provider whose accounts are open; null when none are.
+    const [accountsFor, setAccountsFor] = useState(null);
 
     useEffect(() => {
         load();
@@ -363,6 +368,32 @@ export function ProvidersSheet() {
 
         return attempt(() => api(path(provider, "/login"), { type }));
     };
+
+    // A new account of the provider: its own sign-in runs, and its answer is kept as the account.
+    const addAccount = (provider, type) => {
+        setAccountsFor(null);
+
+        return attempt(() => api(path(provider, "/accounts"), { type }));
+    };
+
+    // The provider runs on the account from its next request; the sheet's list says so at once.
+    const useAccount = (provider, account) =>
+        attempt(async () => {
+            const answer = await api(path(provider, "/active"), { account: account.id });
+
+            setProviders(answer);
+            setAccountsFor(provider.id);
+        });
+
+    const removeAccount = (provider, account) =>
+        confirm(
+            `Remove the account “${account.name}” from ${provider.name}? Its sign-in is deleted from HADAL's data folder.`,
+        ) &&
+        attempt(async () => {
+            await api(path(provider, `/accounts/${account.id}`), undefined, { method: "DELETE" });
+            setAccountsFor(null);
+            load();
+        });
 
     const logout = (provider) =>
         confirm(
@@ -473,8 +504,12 @@ export function ProvidersSheet() {
         (endpointForm === provider.id ||
             (endpointForm === ADDING && provider.id === "openai-compatible"));
     const modelsOpen = (provider) => open?.id === provider.id;
+    const accountsOpen = (provider) => accountsFor === provider.id;
     const isOpen = (provider) =>
-        auth?.providerId === provider.id || formFor(provider) || modelsOpen(provider);
+        auth?.providerId === provider.id ||
+        formFor(provider) ||
+        accountsOpen(provider) ||
+        modelsOpen(provider);
 
     // A row, and under it, inside the list, what its buttons opened: its sign-in, or the endpoint form.
     const row = (provider) => html`<div class="provider-item" key=${provider.id}>
@@ -490,8 +525,45 @@ export function ProvidersSheet() {
                           onDone=${endpointSaved}
                           onCancel=${() => setEndpointForm(null)}
                       />`
-                      : modelsOpen(provider) &&
-                        html`<div class="provider-models">
+                      : accountsOpen(provider)
+                        ? html`<div class="provider-accounts">
+                              <div class="label">Accounts</div>
+                              <p class="muted small">
+                                  The account in use signs in for all of ${provider.name}'s models. The default is the
+                                  sign-in in <span class="mono">~/.pi/agent/auth.json</span>, shared with HADAL; a named
+                                  account is kept in HADAL's data folder. A switch applies from a run's next request.
+                              </p>
+                              ${provider.accounts.map(
+                                  (
+                                      account,
+                                  ) => html`<div class="provider-account ${account.active ? "active" : ""}" key=${account.id}>
+                                  <div class="provider-account-info">
+                                      <div class="small">
+                                          ${account.name}${account.id === "default" ? " · default" : ""}${account.needsSignIn ? html` <span class="warn provider-needs">needs sign-in</span>` : ""}
+                                      </div>
+                                      <div class="muted small">
+                                          ${ACCOUNT_KINDS[account.type] ?? "sign-in"}${account.active ? " · in use" : ""}
+                                      </div>
+                                  </div>
+                                  ${
+                                      !account.active &&
+                                      html`<button class="button small" onClick=${() => useAccount(provider, account)}>Use</button>`
+                                  }
+                                  ${account.active && html`<span class="ok small provider-account-inuse"><${Icon} name="check" size=${13} /> In use</span>`}
+                                  ${account.named && html`<button class="button small ghost" onClick=${() => removeAccount(provider, account)}>Remove</button>`}
+                              </div>`,
+                              )}
+                              <div class="provider-accounts-add">
+                                  ${provider.oauth && html`<button class="button small" onClick=${() => addAccount(provider, "oauth")}>${provider.oauth}</button>`}
+                                  ${
+                                      provider.apiKey &&
+                                      !customIds.has(provider.id) &&
+                                      html`<button class="button small" onClick=${() => addAccount(provider, "api_key")}>API key</button>`
+                                  }
+                              </div>
+                          </div>`
+                        : modelsOpen(provider) &&
+                          html`<div class="provider-models">
                         <label class="search">
                             <${Icon} name="search" size=${16} />
                             <input
@@ -621,6 +693,17 @@ export function ProvidersSheet() {
                         onClick=${() => showModels(provider)}
                     >
                         Models
+                    </button>`
+                }
+                ${
+                    provider.configured &&
+                    html`<button
+                        class="button small ghost"
+                        aria-expanded=${accountsFor === provider.id}
+                        title="The accounts the provider can run on, and which is in use"
+                        onClick=${() => setAccountsFor((was) => (was === provider.id ? null : provider.id))}
+                    >
+                        Accounts
                     </button>`
                 }
                 ${

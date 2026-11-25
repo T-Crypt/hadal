@@ -22,6 +22,7 @@ import {
 import type { User } from "../config.ts";
 import { MAX_AVATAR, readAvatar } from "../avatars.ts";
 import { describe, HttpError } from "../errors.ts";
+import { parsePolicy } from "../model-origin.ts";
 import { desktopTheme, wallpaperFile } from "../omarchy.ts";
 import { runningBoard, runningNow } from "../running.ts";
 import { serveImage } from "./assets.ts";
@@ -221,10 +222,14 @@ export function createApi(options: HttpOptions, auth: Auth) {
 
         if (
             first === "folder-locks" &&
-            (second === "lock" || second === "unlock") &&
+            (second === "lock" || second === "unlock" || second === "policy") &&
             method === "POST"
         ) {
-            const body = (await readJson(request)) as { path?: unknown; hide?: unknown };
+            const body = (await readJson(request)) as {
+                path?: unknown;
+                hide?: unknown;
+                policy?: unknown;
+            };
 
             if (
                 typeof body.path !== "string" ||
@@ -237,10 +242,23 @@ export function createApi(options: HttpOptions, auth: Auth) {
             const hide = Array.isArray(body.hide)
                 ? body.hide.filter((each): each is string => typeof each === "string").slice(0, 64)
                 : [];
+            const policy =
+                body.policy === undefined
+                    ? ({ scope: "local" } as const)
+                    : parsePolicy(body.policy);
+
+            if (policy === undefined) {
+                throw new HttpError(
+                    400,
+                    "The policy is local, anthropic, us, or custom with US companies.",
+                );
+            }
 
             try {
                 if (second === "lock") {
-                    await app.lockFolder(user, body.path, hide);
+                    await app.lockFolder(user, body.path, hide, policy);
+                } else if (second === "policy") {
+                    app.setFolderPolicy(user, body.path, policy);
                 } else if (!app.unlockFolder(user, body.path)) {
                     throw new HttpError(404, "That folder is not locked.");
                 }

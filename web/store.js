@@ -788,8 +788,8 @@ export function folderLockOf(path) {
  * Lock a folder, or change its policy (owner only): what may see it, and the copies to hide. The server seals every
  * session working there, and the seal lasts after an unlock.
  */
-export async function lockFolder(path, policy, hide = []) {
-    const view = await api("folder-locks/lock", { path, policy, hide });
+export async function lockFolder(path, policy, hide = [], remote = []) {
+    const view = await api("folder-locks/lock", { path, policy, hide, remote });
 
     store.set({ folderLocks: view });
 

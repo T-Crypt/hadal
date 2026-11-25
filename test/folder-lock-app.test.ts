@@ -135,3 +135,53 @@ test("a us lock lets Claude in and keeps DeepSeek out", async () => {
     await say(app, session, "send this to a chinese model");
     assert.deepEqual(calls, [], "the Chinese model was refused before the request");
 });
+
+test("a remote copy is open to its sealed session and closed to others", async () => {
+    const folder = join(root, "remote-vault");
+
+    mkdirSync(folder, { recursive: true });
+    await app.setHosts(owner(app), [{ name: "aphotic", target: "tcrypt@aphotic", mode: "allow" }]);
+
+    const session = await newSession(app, folder);
+
+    await app.lockFolder(owner(app), folder, [], { scope: "us" }, [
+        { host: "aphotic", path: "/home/tcrypt/Work" },
+    ]);
+
+    assert.deepEqual(
+        app.folderLockCall(session, { host: "aphotic", path: "/home/tcrypt/Work/soteria/a" }),
+        { decision: "allow" },
+    );
+    assert.equal(
+        app.folderLockCall(session, { host: "aphotic", path: "/home/tcrypt/Working" }).decision,
+        "block",
+    );
+    assert.equal(app.folderLockCall(session, { host: "aphotic" }).decision, "ask");
+    assert.equal(
+        app.folderLockCall(session, { host: "other", path: "/home/tcrypt/Work" }).decision,
+        "block",
+    );
+
+    const blind = await newSession(app, outside);
+
+    assert.equal(
+        app.folderLockCall(blind, { host: "aphotic", path: "/home/tcrypt/Work/soteria/a" })
+            .decision,
+        "block",
+    );
+    assert.equal(
+        app.folderLockCall(blind, { host: "aphotic", path: "/home/tcrypt/Working" }).decision,
+        "allow",
+    );
+    assert.equal(app.folderLockCall(blind, { host: "aphotic" }).decision, "ask");
+
+    const other = join(root, "remote-other");
+
+    mkdirSync(other, { recursive: true });
+    await assert.rejects(
+        app.lockFolder(owner(app), other, [], { scope: "us" }, [
+            { host: "missing", path: "/home/tcrypt/Work" },
+        ]),
+        /There is no host named missing/,
+    );
+});

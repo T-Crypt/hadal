@@ -38,7 +38,17 @@ import {
 } from "node:fs";
 import { isIP } from "node:net";
 import { homedir, userInfo } from "node:os";
-import { basename, delimiter, dirname, isAbsolute, join, normalize, resolve, sep } from "node:path";
+import {
+    basename,
+    delimiter,
+    dirname,
+    isAbsolute,
+    join,
+    normalize,
+    posix,
+    resolve,
+    sep,
+} from "node:path";
 import {
     type Api,
     type AssistantMessage,
@@ -62,6 +72,14 @@ import {
     parsePolicy,
 } from "./model-origin.ts";
 
+/** A copy of a locked folder on another machine HADAL reaches through its SSH hosts. */
+export interface RemoteLock {
+    /** The host's name in Menu -> Hosts. */
+    host: string;
+    /** The folder on that machine, absolute and with `/` separators. */
+    path: string;
+}
+
 /** One locked folder, as the owner set it. */
 export interface FolderLock {
     /** The folder, absolute, as the owner gave it. */
@@ -74,6 +92,72 @@ export interface FolderLock {
     by?: string;
     /** Who may see it: local models, or local and the cloud companies this names. */
     policy: LockPolicy;
+    /** Copies of the folder on machines HADAL reaches through its SSH hosts. */
+    remote: RemoteLock[];
+}
+
+/** A host name, as `hosts.ts` accepts one. */
+const HOST_NAME = /^[a-z0-9][a-z0-9-]{0,30}$/;
+
+/** A remote path, normalized, or undefined when it is not an absolute POSIX path. */
+export function remotePath(path: string): string | undefined {
+    if (typeof path !== "string" || path === "" || path.includes("\u0000") || !path.startsWith("/")) {
+        return undefined;
+    }
+
+    const normalized = posix.normalize(path).replace(/\/+$/, "");
+
+    return normalized === "" ? "/" : normalized;
+}
+
+/** Whether a remote path is `root` or inside it. Both are normalized POSIX paths. */
+export function withinRemote(path: string, root: string): boolean {
+    const inner = remotePath(path);
+    const outer = remotePath(root);
+
+    if (inner === undefined || outer === undefined) {
+        return false;
+    }
+
+    return inner === outer || inner.startsWith(outer === "/" ? "/" : `${outer}/`);
+}
+
+/** Remote copies from stored or posted JSON, checked; undefined when one is not valid. */
+export function parseRemoteLocks(value: unknown): RemoteLock[] | undefined {
+    if (value === undefined || value === null) {
+        return [];
+    }
+
+    if (!Array.isArray(value) || value.length > 8) {
+        return undefined;
+    }
+
+    const out: RemoteLock[] = [];
+
+    for (const raw of value) {
+        if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+            return undefined;
+        }
+
+        const host = (raw as { host?: unknown }).host;
+        const path = (raw as { path?: unknown }).path;
+        const normalized = typeof path === "string" ? remotePath(path) : undefined;
+
+        if (typeof host !== "string" || !HOST_NAME.test(host) || normalized === undefined) {
+            return undefined;
+        }
+
+        if (!out.some((each) => each.host === host && each.path === normalized)) {
+            out.push({ host, path: normalized });
+        }
+    }
+
+    return out;
+}
+
+/** A remote copy copied, so a caller cannot change stored state through the copy it got. */
+function cloneRemote(remote: readonly RemoteLock[]): RemoteLock[] {
+    return remote.map((each) => ({ host: each.host, path: each.path }));
 }
 
 /** A session that may not send to every model: the policy it is sealed to, and the folder that sealed it. */
@@ -181,6 +265,17 @@ function savedPolicy(raw: unknown, path: string): LockPolicy {
     }
 
     return policy;
+}
+
+/** Remote copies from the lock file, checked. An invalid copy fails closed. */
+function savedRemote(raw: unknown, path: string): RemoteLock[] {
+    const remote = parseRemoteLocks(raw);
+
+    if (remote === undefined) {
+        throw new Error(`the lock on ${path} has an invalid remote copy`);
+    }
+
+    return remote;
 }
 
 /** What a locked file fails with. */
@@ -434,6 +529,7 @@ export class FolderLocks {
             ...lock,
             hide: [...lock.hide],
             policy: clonePolicy(lock.policy),
+            remote: cloneRemote(lock.remote),
         }));
     }
 
@@ -538,6 +634,7 @@ export class FolderLocks {
         hide: readonly string[] = [],
         by?: string,
         policy: LockPolicy = { scope: "local" },
+        remote: readonly RemoteLock[] = [],
     ): FolderLock {
         if (!isAbsolute(path)) {
             throw new Error("A locked folder needs an absolute path.");
@@ -568,6 +665,7 @@ export class FolderLocks {
         if (existing !== undefined) {
             existing.hide = [...new Set([...existing.hide, ...extra])];
             existing.policy = clonePolicy(policy);
+            existing.remote = cloneRemote(remote);
         } else {
             this.#locks.push({
                 path: folder,
@@ -575,6 +673,7 @@ export class FolderLocks {
                 at: Date.now(),
                 ...(by === undefined ? {} : { by }),
                 policy: clonePolicy(policy),
+                remote: cloneRemote(remote),
             });
         }
 
@@ -612,6 +711,37 @@ export class FolderLocks {
                 if (best === undefined || entry.root.length > best.root.length) {
                     best = entry;
                 }
+            }
+        }
+
+        return best?.lock;
+    }
+
+    /** The remote copies of locked folders on one host. */
+    remoteLocks(host: string): { lock: FolderLock; path: string }[] {
+        const out: { lock: FolderLock; path: string }[] = [];
+
+        for (const lock of this.#locks) {
+            for (const remote of lock.remote) {
+                if (remote.host === host) {
+                    out.push({ lock, path: remote.path });
+                }
+            }
+        }
+
+        return out;
+    }
+
+    /** The lock whose remote copy covers a path on a host, if one does. */
+    lockForRemote(host: string, path: string): FolderLock | undefined {
+        let best: { lock: FolderLock; path: string } | undefined;
+
+        for (const entry of this.remoteLocks(host)) {
+            if (
+                withinRemote(path, entry.path) &&
+                (best === undefined || entry.path.length > best.path.length)
+            ) {
+                best = entry;
             }
         }
 
@@ -782,6 +912,10 @@ export class FolderLocks {
                             saved.version === 1
                                 ? ({ scope: "local" } as const)
                                 : savedPolicy(lock.policy, path),
+                        remote:
+                            saved.version === 1
+                                ? []
+                                : savedRemote(lock.remote, path),
                     };
                 });
 

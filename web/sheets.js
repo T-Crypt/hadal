@@ -19,6 +19,7 @@ import {
     GalleryUpdateSheet,
 } from "./sheets/gallery.js";
 import { CwdSheet } from "./sheets/folder.js";
+import { LockSheet } from "./sheets/lock.js";
 import { MemorySheet } from "./sheets/memory.js";
 import { MenuSheet, PlacesSheet } from "./sheets/menu.js";
 import { MessageSheet } from "./sheets/message.js";
@@ -206,6 +207,9 @@ function sheetBody(sheet) {
             break;
         case "cwd":
             body = html`<${CwdSheet} mode=${sheet.mode} fromList=${sheet.fromList === true} />`;
+            break;
+        case "lock":
+            body = html`<${LockSheet} />`;
             break;
         case "artifacts":
             body = html`<${ArtifactsSheet} />`;

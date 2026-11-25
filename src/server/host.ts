@@ -469,12 +469,16 @@ export interface PocketHost {
     /** Who HADAL works for in a conversation now: whose message led to its current work. */
     requesterOf(conversationId: ConversationId): string | undefined;
     /**
-     * Whether a conversation is sealed to a folder lock's model policy. A sealed session may not reach another
-     * machine through `host`: its folder's data would leave the machine the lock guards.
+     * How a tool call on another machine relates to the folder locks: allow it, block it, or ask a person. A sealed
+     * session may work inside the remote copies of its own lock; a path inside any remote copy is blocked to other
+     * sessions. A command has no path, so a host with a remote copy asks a person.
      *
      * @experimental In 0.30: it can change in a minor release (docs/extensions/policies/api-stability.md).
      */
-    sealed(conversationId: ConversationId): boolean;
+    folderLockCall(
+        conversationId: ConversationId,
+        call: { host: string; path?: string },
+    ): { decision: "allow" | "block" | "ask"; reason?: string };
     /** Why a tool call that repeats one that already failed (or a third identical one) should not run. */
     readonly loopGuard: Pick<LoopGuard, "onRequest" | "noteCall" | "blocked">;
     /**

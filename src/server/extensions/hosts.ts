@@ -15,6 +15,7 @@ import {
 import { CodingTools } from "@earendil-works/pi-durable/tools";
 import type { ApprovalAnswer, PocketHost } from "../host.ts";
 import type { HostEntry } from "../hosts.ts";
+import { posix } from "node:path";
 
 /** ssh's options whose value can be the next word. */
 const OPTIONS_WITH_VALUE = new Set(
@@ -185,7 +186,31 @@ export default function createHosts(host: PocketHost) {
                             return tool.execute(rest as never, api, context);
                         }
 
+                        const entry = registry.get(target);
                         const env = await registry.envFor(target);
+
+                        if (
+                            entry !== undefined &&
+                            name !== "bash" &&
+                            host.folderLockCall !== undefined &&
+                            typeof rest.path === "string" &&
+                            rest.path !== ""
+                        ) {
+                            const absolute = rest.path.startsWith("/")
+                                ? rest.path
+                                : posix.join(env.cwd, rest.path);
+                            const lock = host.folderLockCall(api.conversationId, {
+                                host: entry.name,
+                                path: absolute,
+                            });
+
+                            if (lock.decision !== "allow") {
+                                throw new Error(
+                                    lock.reason ??
+                                        `A folder lock refuses this call on ${entry.name}.`,
+                                );
+                            }
+                        }
 
                         return tool.execute(rest as never, { ...api, env }, context);
                     },
@@ -224,12 +249,6 @@ export default function createHosts(host: PocketHost) {
 
                     const entry = registry.get(String(target));
 
-                    if (host.sealed?.(api.conversationId) === true) {
-                        return {
-                            block: `${call.name} with host: "${String(target)}" would reach another machine from a session sealed to a folder lock's model policy. Open a session on that machine instead.`,
-                        };
-                    }
-
                     if (entry === undefined || entry.mode === "off") {
                         const usable = registry.usable().map((each) => each.name);
 
@@ -238,40 +257,86 @@ export default function createHosts(host: PocketHost) {
                         };
                     }
 
+                    const subject = subjectOf(call.name, args);
+
+                    const askToRun = async (reason: string) => {
+                        let answer = await api.memo<ApprovalAnswer>(
+                            "pocket.host-approval",
+                            context,
+                        );
+
+                        if (answer === undefined) {
+                            const asked = await host.approvals.request(
+                                {
+                                    id: `${api.taskId}:${call.id}`,
+                                    conversationId: api.conversationId,
+                                    taskId: api.taskId,
+                                    callId: call.id,
+                                    tool: `${call.name} on ${entry.name}`,
+                                    subject,
+                                    reason,
+                                    createdAt: Date.now(),
+                                },
+                                context,
+                            );
+
+                            answer = await api.memo<ApprovalAnswer>(
+                                "pocket.host-approval",
+                                asked,
+                                context,
+                            );
+                        }
+
+                        return answer.allow
+                            ? undefined
+                            : {
+                                  block: `${answer.by} denied this ${call.name} call on ${entry.name}. Call: ${subject}`,
+                              };
+                    };
+
+                    const isFile =
+                        call.name === "read" || call.name === "write" || call.name === "edit";
+                    let remotePath: string | undefined;
+
+                    if (isFile && typeof args.path === "string" && args.path !== "") {
+                        try {
+                            const cwd = entry.cwd ?? (await registry.envFor(entry.name)).cwd;
+
+                            remotePath = args.path.startsWith("/")
+                                ? args.path
+                                : posix.join(cwd, args.path);
+                        } catch {
+                            // Let the call fail on its own when the host cannot be reached.
+                        }
+                    }
+
+                    const lock = host.folderLockCall?.(api.conversationId, {
+                        host: entry.name,
+                        ...(remotePath === undefined ? {} : { path: remotePath }),
+                    });
+
+                    if (lock?.decision === "block") {
+                        return {
+                            block:
+                                lock.reason ?? `A folder lock blocks this call on ${entry.name}.`,
+                        };
+                    }
+
+                    if (lock?.decision === "ask") {
+                        const denied = await askToRun(
+                            lock.reason ?? `A folder lock maps a path on ${entry.name}.`,
+                        );
+
+                        if (denied !== undefined) {
+                            return denied;
+                        }
+                    }
+
                     if (entry.mode !== "ask") {
                         return undefined;
                     }
 
-                    const subject = subjectOf(call.name, args);
-                    let answer = await api.memo<ApprovalAnswer>("pocket.host-approval", context);
-
-                    if (answer === undefined) {
-                        const asked = await host.approvals.request(
-                            {
-                                id: `${api.taskId}:${call.id}`,
-                                conversationId: api.conversationId,
-                                taskId: api.taskId,
-                                callId: call.id,
-                                tool: `${call.name} on ${entry.name}`,
-                                subject,
-                                reason: `${entry.name} asks before each call`,
-                                createdAt: Date.now(),
-                            },
-                            context,
-                        );
-
-                        answer = await api.memo<ApprovalAnswer>(
-                            "pocket.host-approval",
-                            asked,
-                            context,
-                        );
-                    }
-
-                    return answer.allow
-                        ? undefined
-                        : {
-                              block: `${answer.by} denied this ${call.name} call on ${entry.name}. Call: ${subject}`,
-                          };
+                    return askToRun(`${entry.name} asks before each call`);
                 },
             }),
         ],

@@ -93,13 +93,15 @@ import { defang, quoted } from "./fence.ts";
 import { FolderFavorites } from "./folder-favorites.ts";
 import {
     FolderLocks,
+    type RemoteLock,
     type SealedPolicy,
     installLockGate,
     Locality,
     lockEnv,
     stricterPolicy,
+    withinRemote,
 } from "./folder-lock.ts";
-import { type LockPolicy, allows, classify } from "./model-origin.ts";
+import { type LockPolicy, allows, classify, describePolicy } from "./model-origin.ts";
 import { Gallery } from "./gallery.ts";
 import { Goals } from "./goals.ts";
 import {
@@ -1003,7 +1005,7 @@ export class PocketApp {
             },
             fetchPublic: createPublicFetch(),
             requesterOf: (conversationId) => this.attribution.requesterOf(conversationId),
-            sealed: (conversationId) => this.sealedConversation(conversationId),
+            folderLockCall: (conversationId, call) => this.folderLockCall(conversationId, call),
             loopGuard: this.loopGuard,
             roleOf: (personId) => this.config.userById(personId)?.role,
             on: (event, listener) => this.events.on(event, listener),
@@ -1787,6 +1789,62 @@ export class PocketApp {
         return this.sealedPolicy(id) !== undefined;
     }
 
+    /**
+     * How a tool call on another machine relates to the folder locks. A sealed session may work inside the remote
+     * copies of its own lock; a path inside any remote copy is blocked to a session outside it. A command has no path,
+     * so when a host holds a remote copy, a person decides.
+     */
+    folderLockCall(
+        conversationId: ConversationId,
+        call: { host: string; path?: string },
+    ): { decision: "allow" | "block" | "ask"; reason?: string } {
+        const sealed = this.sealedPolicy(conversationId);
+        const lock =
+            sealed?.path === undefined ? undefined : this.folderLocks.lockFor(sealed.path);
+        const mappings = this.folderLocks.remoteLocks(call.host);
+
+        if (mappings.length === 0) {
+            return sealed === undefined
+                ? { decision: "allow" }
+                : {
+                      decision: "block",
+                      reason: `This session is sealed to ${describePolicy(sealed.policy)}. It cannot reach ${call.host}.`,
+                  };
+        }
+
+        if (call.path === undefined) {
+            return {
+                decision: "ask",
+                reason: `A folder lock maps ${mappings[0]!.path} on ${call.host}. A command can reach any path there.`,
+            };
+        }
+
+        const inside = mappings.find((entry) => withinRemote(call.path!, entry.path));
+
+        if (sealed === undefined) {
+            return inside === undefined
+                ? { decision: "allow" }
+                : {
+                      decision: "block",
+                      reason: `${inside.path} on ${call.host} is a locked folder's copy.`,
+                  };
+        }
+
+        const own = mappings.find(
+            (entry) =>
+                lock !== undefined &&
+                entry.lock.path === lock.path &&
+                withinRemote(call.path!, entry.path),
+        );
+
+        return own === undefined
+            ? {
+                  decision: "block",
+                  reason: `This session is sealed to ${describePolicy(sealed.policy)}. It may use only the remote copies of ${lock?.path ?? "its lock"}.`,
+              }
+            : { decision: "allow" };
+    }
+
     /** Whether a conversation's current model is local. */
     localModel(id: ConversationId): boolean {
         const ref = this.#agents.get(id)?.model;
@@ -1886,10 +1944,17 @@ export class PocketApp {
         path: string,
         hide: readonly string[] = [],
         policy: LockPolicy = { scope: "local" },
+        remote: readonly RemoteLock[] = [],
     ) {
         this.#requireOwner(user);
 
-        const lock = this.folderLocks.lock(path, hide, user.id, policy);
+        for (const copy of remote) {
+            if (this.hosts.get(copy.host) === undefined) {
+                throw new HttpError(400, `There is no host named ${copy.host}.`);
+            }
+        }
+
+        const lock = this.folderLocks.lock(path, hide, user.id, policy, remote);
 
         for (const id of new Set([
             ...this.#agents.keys(),

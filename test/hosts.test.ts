@@ -348,5 +348,75 @@ test("a session sealed to a folder lock cannot reach a host", async () => {
 
     assert.equal(app.sealedConversation(id), true, "the session is sealed");
     assert.equal(result?.error, true);
-    assert.match(result!.text, /sealed to a folder lock/);
+    assert.match(result!.text, /cannot reach gpu/);
+});
+
+test("a sealed session reads its lock's remote copy, and a command there asks", async () => {
+    await app.setHosts(owner(app), [{ ...gpu, mode: "allow" }]);
+
+    const mapped = join(remote, "locked");
+
+    mkdirSync(mapped, { recursive: true });
+    writeFileSync(join(mapped, "secret.md"), "the remote secret\n");
+
+    const folder = join(root, "sealed-remote");
+
+    mkdirSync(folder, { recursive: true });
+
+    const id = await newSession(app, folder);
+
+    await app.lockFolder(owner(app), folder, [], { scope: "us" }, [{ host: "gpu", path: mapped }]);
+
+    const [inside] = await run(id, tool("read", { path: "locked/secret.md", host: "gpu" }));
+
+    assert.equal(inside?.error, false);
+    assert.match(inside!.text, /the remote secret/);
+    assert.equal(app.sealedConversation(id), true, "the session is sealed");
+    assert.equal(
+        app.folderLockView().locks.find((lock) => lock.path === folder)?.remote?.[0]?.path,
+        mapped,
+    );
+    assert.equal(
+        app.folderLockCall(id, { host: "gpu", path: join(remote, "notes.txt") }).decision,
+        "block",
+    );
+
+    const outside = (await run(id, tool("read", { path: "notes.txt", host: "gpu" }))).at(-1);
+
+    assert.equal(outside?.error, true);
+    assert.match(outside!.text, /remote copies/);
+
+    const blindFolder = join(root, "not-locked");
+
+    mkdirSync(blindFolder, { recursive: true });
+
+    const blind = await newSession(app, blindFolder);
+    const [blocked] = await run(blind, tool("read", { path: "locked/secret.md", host: "gpu" }));
+
+    assert.equal(blocked?.error, true);
+    assert.match(blocked!.text, /locked folder's copy/);
+
+    const answering = (async () => {
+        for (let tries = 0; tries < 200; tries++) {
+            const waiting = app.approvals.forConversation(id)[0];
+
+            if (waiting !== undefined) {
+                assert.equal(waiting.tool, "bash on gpu");
+                app.approvals.answer(waiting.id, { allow: true, by: "Owner" });
+
+                return;
+            }
+
+            await new Promise((resolve) => setTimeout(resolve, 25));
+        }
+
+        assert.fail("no approval was asked for");
+    })();
+    const ran = (await run(id, tool("bash", { command: "cat locked/secret.md", host: "gpu" }))).at(
+        -1,
+    );
+
+    await answering;
+    assert.equal(ran?.error, false);
+    assert.match(ran!.text, /the remote secret/);
 });

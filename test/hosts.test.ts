@@ -332,3 +332,21 @@ test("the transcript tags a call on another machine with its host", async () => 
         name: "",
     });
 });
+
+test("a session sealed to a folder lock cannot reach a host", async () => {
+    await app.setHosts(owner(app), [gpu]);
+
+    const folder = join(root, "sealed-host");
+
+    mkdirSync(folder, { recursive: true });
+
+    const id = await newSession(app, folder);
+
+    await app.lockFolder(owner(app), folder);
+
+    const [result] = await run(id, tool("bash", { command: "pwd", host: "gpu" }));
+
+    assert.equal(app.sealedConversation(id), true, "the session is sealed");
+    assert.equal(result?.error, true);
+    assert.match(result!.text, /sealed to a folder lock/);
+});

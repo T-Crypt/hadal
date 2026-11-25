@@ -93,7 +93,8 @@ function policyWords(policy) {
 
 export function LockSheet() {
     const path = store.state.sheet?.path ?? "";
-    const lock = store.state.folderLocks?.locks?.find((each) => each.path === path);
+    const [target, setTarget] = useState(path);
+    const lock = store.state.folderLocks?.locks?.find((each) => each.path === target);
     const models = store.state.models ?? [];
     const [scope, setScope] = useState(lock?.policy?.scope ?? "us");
     const [companies, setCompanies] = useState(
@@ -132,7 +133,7 @@ export function LockSheet() {
                 .map((each) => each.trim())
                 .filter((each) => each.startsWith("/"));
 
-            await lockFolder(path, policy, paths);
+            await lockFolder(target, policy, paths);
             closeSheet();
         } catch (failure) {
             setError(failure.message);
@@ -142,7 +143,9 @@ export function LockSheet() {
     };
 
     const unlock = async () => {
-        if (!confirm(`Unlock ${path}?\n\nSessions that worked there stay sealed to its policy.`)) {
+        if (
+            !confirm(`Unlock ${target}?\n\nSessions that worked there stay sealed to its policy.`)
+        ) {
             return;
         }
 
@@ -150,7 +153,7 @@ export function LockSheet() {
         setError(null);
 
         try {
-            await unlockFolder(path);
+            await unlockFolder(target);
             closeSheet();
         } catch (failure) {
             setError(failure.message);
@@ -160,7 +163,17 @@ export function LockSheet() {
     };
 
     return html`<${Sheet} title="Folder lock" onClose=${closeSheet}>
-        <p class="mono small">${path}</p>
+        <div class="field">
+            <div class="label">Folder</div>
+            <input
+                type="text"
+                spellcheck="false"
+                autocomplete="off"
+                placeholder="/home/you/Work"
+                value=${target}
+                onInput=${(event) => setTarget(event.currentTarget.value)}
+            />
+        </div>
         <p class="muted small">
             A session working here can use only the models this policy allows. The seal lasts after an unlock. A session
             outside the folder cannot read it or its copies.
@@ -229,7 +242,7 @@ export function LockSheet() {
         ${error && html`<div class="error-box">${error}</div>`}
         <div class="row">
             ${lock && html`<button class="button ghost" disabled=${busy} onClick=${unlock}>Unlock</button>`}
-            <button class="button primary" disabled=${busy || path === ""} onClick=${save}>
+            <button class="button primary" disabled=${busy || target.trim() === ""} onClick=${save}>
                 ${busy ? "Saving…" : lock ? "Update policy" : "Lock folder"}
             </button>
         </div>

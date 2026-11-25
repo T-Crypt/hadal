@@ -64,7 +64,7 @@ to a provider you did not choose is allowed only when the model itself is on the
 ## Remote copies
 
 A lock can name a copy of the folder on another machine: `host: "aphotic", path: "/home/tcrypt/Work"`. The host
-is a name from Menu -> Hosts. The path is absolute and uses `/` separators; a Windows path is not supported.
+is a name from Menu, then Hosts. The path is absolute and uses `/` separators; a Windows path is not supported.
 
 - **A sealed session** may use `host: "aphotic"` for `read`, `write`, and `edit` only inside the mapped path. A
   path outside it is refused. The session's model policy still applies.

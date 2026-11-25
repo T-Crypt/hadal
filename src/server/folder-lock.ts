@@ -53,6 +53,14 @@ import {
     FileError,
     ok,
 } from "@earendil-works/pi-durable/env";
+import {
+    type LockPolicy,
+    type ModelOrigin,
+    allows,
+    classify,
+    describePolicy,
+    parsePolicy,
+} from "./model-origin.ts";
 
 /** One locked folder, as the owner set it. */
 export interface FolderLock {
@@ -64,21 +72,120 @@ export interface FolderLock {
     at: number;
     /** Who locked it. */
     by?: string;
+    /** Who may see it: local models, or local and the cloud companies this names. */
+    policy: LockPolicy;
 }
 
-interface Saved {
-    version: 1;
+/** A session that may not send to every model: the policy it is sealed to, and the folder that sealed it. */
+export interface SealedPolicy {
+    policy: LockPolicy;
+    path?: string;
+}
+
+/** A sealed session, as the file keeps it. */
+interface SealedEntry {
+    policy: LockPolicy;
+    path?: string;
+    at: number;
+}
+
+/** The file as version 2 writes it: a policy on every lock and every seal. */
+type SavedV2 = {
+    version: 2;
     locks: FolderLock[];
-    /** Conversations that may never send to a model that is not local. */
-    sealed: number[];
+    sealed: (SealedEntry & { id: number })[];
+};
+
+/** A policy copied, so a caller cannot change stored state through the copy it got. */
+function clonePolicy(policy: LockPolicy): LockPolicy {
+    return policy.scope === "custom"
+        ? { scope: "custom", companies: [...policy.companies] }
+        : { scope: policy.scope };
 }
 
-/** What a locked request fails with. */
-export const LOCKED_REQUEST =
-    "This session is locked to local models: its folder is locked, so its requests go only to a model on this machine, the LAN, or the tailnet. Pick a local model to go on.";
+/** The company names a policy allows. `undefined` means every US company. */
+function companiesOf(policy: LockPolicy): readonly string[] | undefined {
+    switch (policy.scope) {
+        case "local":
+            return [];
+        case "anthropic":
+            return ["Anthropic"];
+        case "us":
+            return undefined;
+        case "custom":
+            return policy.companies;
+    }
+}
+
+/** The policy for a set of company names, with the narrowest name for it. */
+function policyOf(companies: readonly string[]): LockPolicy {
+    const unique = [...new Set(companies)];
+
+    if (unique.length === 0) {
+        return { scope: "local" };
+    }
+
+    if (unique.length === 1 && unique[0] === "Anthropic") {
+        return { scope: "anthropic" };
+    }
+
+    return { scope: "custom", companies: unique };
+}
+
+/** The narrower of two policies: the companies both allow. A seal never widens. */
+export function stricterPolicy(a: LockPolicy, b: LockPolicy): LockPolicy {
+    if (a.scope === "local" || b.scope === "local") {
+        return { scope: "local" };
+    }
+
+    const left = companiesOf(a);
+    const right = companiesOf(b);
+
+    if (left === undefined && right === undefined) {
+        return { scope: "us" };
+    }
+
+    if (left === undefined) {
+        return policyOf(right!);
+    }
+
+    if (right === undefined) {
+        return policyOf(left);
+    }
+
+    return policyOf(left.filter((company) => right.includes(company)));
+}
+
+/** Whether two policies allow the same models. */
+function samePolicy(a: LockPolicy, b: LockPolicy): boolean {
+    if (a.scope !== b.scope) {
+        return false;
+    }
+
+    if (a.scope !== "custom" || b.scope !== "custom") {
+        return true;
+    }
+
+    return (
+        a.companies.length === b.companies.length &&
+        a.companies.every((company) => b.companies.includes(company))
+    );
+}
+
+/** A policy from the lock file, checked. An invalid policy fails closed. */
+function savedPolicy(raw: unknown, path: string): LockPolicy {
+    const policy = parsePolicy(raw);
+
+    if (policy === undefined) {
+        throw new Error(`the lock on ${path} has no valid policy`);
+    }
+
+    return policy;
+}
+
 /** What a locked file fails with. */
 export const LOCKED_PATH =
-    "This folder is locked: only sessions working in it, on local models, can read it.";
+    "This folder is locked: only sessions working in it, under its model policy, can read it.";
 
 // ─── Which models are local ─────────────────────────────────────────────────
 
@@ -276,9 +383,12 @@ export class FolderLocks {
     readonly #log: (message: string) => void;
     readonly #bwrap: string | undefined;
     #locks: FolderLock[] = [];
-    #sealed = new Set<number>();
+    /** Sealed sessions, and the policy each one may never widen. */
+    #sealed = new Map<number, SealedEntry>();
     /** Locked folders and what counts as inside them (worktrees of a locked repository), canonical and as written. */
     #roots: string[] = [];
+    /** Each root and the lock it belongs to, so a sealed session gets the policy of its own folder. */
+    #rootPolicies: { root: string; lock: FolderLock }[] = [];
     /** Copies of locked folders kept elsewhere, hidden from other sessions but not a place to work. */
     #hidden: string[] = [];
     /** The file could not be read: everything fails closed until it can. */
@@ -320,7 +430,11 @@ export class FolderLocks {
     }
 
     list(): FolderLock[] {
-        return this.#locks.map((lock) => ({ ...lock, hide: [...lock.hide] }));
+        return this.#locks.map((lock) => ({
+            ...lock,
+            hide: [...lock.hide],
+            policy: clonePolicy(lock.policy),
+        }));
     }
 
     /** Told after every change. */
@@ -381,20 +495,50 @@ export class FolderLocks {
         return this.#sealed.has(conversationId);
     }
 
-    /** Seal a conversation for good: its requests go only to local models from now on. */
-    seal(conversationId: number): void {
-        if (this.#sealed.has(conversationId)) {
+    /** The policy a sealed session may never widen, and the folder that sealed it. */
+    policyForSealed(conversationId: number): SealedPolicy | undefined {
+        const entry = this.#sealed.get(conversationId);
+
+        return entry === undefined
+            ? undefined
+            : {
+                  policy: clonePolicy(entry.policy),
+                  ...(entry.path === undefined ? {} : { path: entry.path }),
+              };
+    }
+
+    /**
+     * Seal a conversation: its requests go only to models the policy allows from now on. A second seal with a narrower
+     * policy narrows it; one with a wider policy changes nothing.
+     */
+    seal(conversationId: number, policy: LockPolicy = { scope: "local" }, path?: string): void {
+        const existing = this.#sealed.get(conversationId);
+        const next =
+            existing === undefined ? clonePolicy(policy) : stricterPolicy(existing.policy, policy);
+
+        if (existing !== undefined && samePolicy(existing.policy, next)) {
             return;
         }
 
-        this.#sealed.add(conversationId);
+        const sealedPath = existing?.path ?? path;
+
+        this.#sealed.set(conversationId, {
+            policy: next,
+            at: existing?.at ?? Date.now(),
+            ...(sealedPath === undefined ? {} : { path: sealedPath }),
+        });
         this.#recompute();
         this.#save();
-        this.#log(`folder lock: session ${conversationId} sealed to local models`);
+        this.#log(`folder lock: session ${conversationId} sealed to ${describePolicy(next)}`);
     }
 
     /** Lock a folder. Its sessions are sealed by the app (`PocketApp.lockFolder`). */
-    lock(path: string, hide: readonly string[] = [], by?: string): FolderLock {
+    lock(
+        path: string,
+        hide: readonly string[] = [],
+        by?: string,
+        policy: LockPolicy = { scope: "local" },
+    ): FolderLock {
         if (!isAbsolute(path)) {
             throw new Error("A locked folder needs an absolute path.");
         }
@@ -423,20 +567,60 @@ export class FolderLocks {
 
         if (existing !== undefined) {
             existing.hide = [...new Set([...existing.hide, ...extra])];
+            existing.policy = clonePolicy(policy);
         } else {
             this.#locks.push({
                 path: folder,
                 hide: extra,
                 at: Date.now(),
                 ...(by === undefined ? {} : { by }),
+                policy: clonePolicy(policy),
             });
         }
 
         this.#recompute();
         this.#save();
-        this.#log(`folder lock: ${folder} locked`);
+        this.#log(`folder lock: ${folder} locked to ${describePolicy(policy)}`);
 
         return this.list().find((lock) => canonical(lock.path) === canonical(folder))!;
+    }
+
+    /** Change a lock's policy. Sessions already sealed keep the narrower policy they have. */
+    setPolicy(path: string, policy: LockPolicy): FolderLock | undefined {
+        const lock = this.#locks.find((each) => canonical(each.path) === canonical(path));
+
+        if (lock === undefined) {
+            return undefined;
+        }
+
+        lock.policy = clonePolicy(policy);
+        this.#recompute();
+        this.#save();
+        this.#log(`folder lock: ${lock.path} now allows ${describePolicy(policy)}`);
+
+        return this.list().find((each) => canonical(each.path) === canonical(path));
+    }
+
+    /** The lock that covers a folder: the deepest one. */
+    lockFor(path: string): FolderLock | undefined {
+        const real = canonical(path);
+        const literal = resolve(path);
+        let best: { root: string; lock: FolderLock } | undefined;
+
+        for (const entry of this.#rootPolicies) {
+            if (within(real, entry.root) || within(literal, entry.root)) {
+                if (best === undefined || entry.root.length > best.root.length) {
+                    best = entry;
+                }
+            }
+        }
+
+        return best?.lock;
+    }
+
+    /** The policy that applies to a folder, or undefined when it is not locked. */
+    policyFor(path: string): LockPolicy | undefined {
+        return this.lockFor(path)?.policy;
     }
 
     /** Unlock a folder. Sessions sealed while it was locked stay sealed. */
@@ -505,7 +689,7 @@ export class FolderLocks {
                 }
             }
 
-            for (const id of this.#sealed) {
+            for (const id of this.#sealed.keys()) {
                 mask(join(this.dataDir, "uploads", String(id)));
             }
 
@@ -563,30 +747,78 @@ export class FolderLocks {
         }
 
         try {
-            const saved = JSON.parse(text) as Partial<Saved>;
+            const saved = JSON.parse(text) as {
+                version?: unknown;
+                locks?: unknown;
+                sealed?: unknown;
+            };
 
             if (
-                saved.version !== 1 ||
+                (saved.version !== 1 && saved.version !== 2) ||
                 !Array.isArray(saved.locks) ||
                 !Array.isArray(saved.sealed)
             ) {
-                throw new Error("not a version 1 lock file");
+                throw new Error("not a version 1 or 2 lock file");
             }
 
-            this.#locks = saved.locks
+            const rawLocks = saved.locks as (Partial<FolderLock> & { path: string })[];
+
+            this.#locks = rawLocks
                 .filter((lock) => typeof lock?.path === "string" && isAbsolute(lock.path))
-                .map((lock) => ({
-                    path: normalize(lock.path),
-                    hide: Array.isArray(lock.hide)
-                        ? lock.hide.filter(
-                              (each): each is string =>
-                                  typeof each === "string" && isAbsolute(each),
-                          )
-                        : [],
-                    at: typeof lock.at === "number" ? lock.at : 0,
-                    ...(typeof lock.by === "string" ? { by: lock.by } : {}),
-                }));
-            this.#sealed = new Set(saved.sealed.filter((id) => Number.isInteger(id)));
+                .map((lock) => {
+                    const path = normalize(lock.path);
+
+                    return {
+                        path,
+                        hide: Array.isArray(lock.hide)
+                            ? lock.hide.filter(
+                                  (each): each is string =>
+                                      typeof each === "string" && isAbsolute(each),
+                              )
+                            : [],
+                        at: typeof lock.at === "number" ? lock.at : 0,
+                        ...(typeof lock.by === "string" ? { by: lock.by } : {}),
+                        policy:
+                            saved.version === 1
+                                ? ({ scope: "local" } as const)
+                                : savedPolicy(lock.policy, path),
+                    };
+                });
+
+            if (saved.version === 1) {
+                this.#sealed = new Map(
+                    saved.sealed
+                        .filter((id): id is number => Number.isInteger(id))
+                        .map((id) => [id, { policy: { scope: "local" }, at: 0 }]),
+                );
+            } else {
+                this.#sealed = new Map(
+                    (saved.sealed as unknown[]).map((raw) => {
+                        const entry = raw as {
+                            id?: unknown;
+                            policy?: unknown;
+                            path?: unknown;
+                            at?: unknown;
+                        };
+                        const id = Number(entry.id);
+                        const policy = parsePolicy(entry.policy);
+
+                        if (!Number.isInteger(id) || policy === undefined) {
+                            throw new Error("a sealed session has no valid policy");
+                        }
+
+                        return [
+                            id,
+                            {
+                                policy,
+                                at: typeof entry.at === "number" ? entry.at : 0,
+                                ...(typeof entry.path === "string" ? { path: entry.path } : {}),
+                            },
+                        ];
+                    }),
+                );
+            }
+
             this.#recompute();
         } catch (error) {
             this.#broken = `folder-locks.json is not valid: ${(error as Error).message}`;
@@ -599,10 +831,20 @@ export class FolderLocks {
             throw new Error(`${this.#broken}. Fix or remove the file, then restart HADAL.`);
         }
 
-        const saved: Saved = {
-            version: 1,
-            locks: this.#locks,
-            sealed: [...this.#sealed].sort((a, b) => a - b),
+        const saved: SavedV2 = {
+            version: 2,
+            locks: this.#locks.map((lock) => ({
+                ...lock,
+                hide: [...lock.hide],
+                policy: clonePolicy(lock.policy),
+            })),
+            sealed: [...this.#sealed.entries()]
+                .map(([id, entry]) => ({
+                    id,
+                    ...entry,
+                    policy: clonePolicy(entry.policy),
+                }))
+                .sort((a, b) => a.id - b.id),
         };
         const temporary = `${this.file}.${process.pid}.tmp`;
 
@@ -617,10 +859,13 @@ export class FolderLocks {
     #recompute(): void {
         const roots = new Set<string>();
         const hidden = new Set<string>();
+        const rootPolicies = new Map<string, { root: string; lock: FolderLock }>();
 
         for (const lock of this.#locks) {
-            roots.add(resolve(lock.path));
-            roots.add(canonical(lock.path));
+            for (const root of [resolve(lock.path), canonical(lock.path)]) {
+                roots.add(root);
+                rootPolicies.set(root, { root, lock });
+            }
 
             for (const each of lock.hide) {
                 hidden.add(resolve(each));
@@ -635,32 +880,37 @@ export class FolderLocks {
         }
 
         // A worktree of a locked repository is the folder under another name: a place to work, so it counts as inside.
-        const lockRoots = [...roots];
         const worktrees = join(this.dataDir, "worktrees");
 
         for (const tree of listDirs(worktrees, 2)) {
             try {
                 const dotGit = readFileSync(join(tree, ".git"), "utf8");
                 const gitdir = /^gitdir:\s*(.+)$/m.exec(dotGit)?.[1]?.trim();
+                const owner =
+                    gitdir === undefined
+                        ? undefined
+                        : this.#locks.find((lock) =>
+                              within(canonical(gitdir), canonical(lock.path)),
+                          );
 
-                if (
-                    gitdir !== undefined &&
-                    lockRoots.some((root) => within(canonical(gitdir), root))
-                ) {
+                if (gitdir !== undefined && owner !== undefined) {
                     roots.add(tree);
                     roots.add(canonical(tree));
+                    rootPolicies.set(tree, { root: tree, lock: owner });
+                    rootPolicies.set(canonical(tree), { root: canonical(tree), lock: owner });
                 }
             } catch {
                 // Not a worktree.
             }
         }
 
-        for (const id of this.#sealed) {
+        for (const id of this.#sealed.keys()) {
             hidden.add(join(this.dataDir, "uploads", String(id)));
         }
 
         this.#roots = [...roots];
         this.#hidden = [...hidden];
+        this.#rootPolicies = [...rootPolicies.values()];
         this.#insideMemo.clear();
     }
 }
@@ -877,7 +1127,17 @@ export function lockEnv(base: ExecutionEnv, locks: FolderLocks, cwd: () => strin
 // ─── Requests ───────────────────────────────────────────────────────────────
 
 /** Whether a request from a provider session id must stay local, and why. */
-export type LockVerdict = (sessionId: string) => Promise<boolean>;
+export type LockVerdict = (sessionId: string) => Promise<SealedPolicy | undefined>;
+
+/** The words a sealed session's blocked request fails with. */
+function refusalText(model: Model<Api>, origin: ModelOrigin, sealed: SealedPolicy): string {
+    const where =
+        sealed.path === undefined
+            ? "This session is sealed"
+            : `This session's folder ${sealed.path} is locked`;
+
+    return `${model.provider}/${model.id}: ${origin.reason}. ${where} to ${describePolicy(sealed.policy)}. Pick a model that policy allows.`;
+}
 
 type Streams = {
     streamSimple: (
@@ -955,8 +1215,18 @@ export function installLockGate(
                         );
                     }
 
-                    if (await sealedSession(sessionId)) {
-                        return fail(LOCKED_REQUEST);
+                    const sealed = await sealedSession(sessionId);
+
+                    if (sealed !== undefined) {
+                        const origin = classify({
+                            provider: model.provider,
+                            id: model.id,
+                            local: false,
+                        });
+
+                        if (!allows(sealed.policy, origin)) {
+                            return fail(refusalText(model, origin, sealed));
+                        }
                     }
                 }
 

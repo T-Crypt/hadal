@@ -91,7 +91,15 @@ import { ExtensionCommands } from "./extension-commands.ts";
 import { ExtensionWebs, mayUse } from "./extension-web.ts";
 import { defang, quoted } from "./fence.ts";
 import { FolderFavorites } from "./folder-favorites.ts";
-import { FolderLocks, installLockGate, Locality, lockEnv } from "./folder-lock.ts";
+import {
+    FolderLocks,
+    type SealedPolicy,
+    installLockGate,
+    Locality,
+    lockEnv,
+    stricterPolicy,
+} from "./folder-lock.ts";
+import { type LockPolicy, allows, classify } from "./model-origin.ts";
 import { Gallery } from "./gallery.ts";
 import { Goals } from "./goals.ts";
 import {
@@ -399,6 +407,20 @@ export interface OpenOptions {
     restart?: () => void;
     /** Where HADAL's own code is, for its updates; tests give a checkout of their own. */
     appRoot?: string;
+}
+
+/** The narrower of two seals, and the first folder that named one. */
+function mergeSealed(a: SealedPolicy | undefined, b: SealedPolicy): SealedPolicy {
+    if (a === undefined) {
+        return b;
+    }
+
+    const path = a.path ?? b.path;
+
+    return {
+        policy: stricterPolicy(a.policy, b.policy),
+        ...(path === undefined ? {} : { path }),
+    };
 }
 
 export class PocketApp {
@@ -981,6 +1003,7 @@ export class PocketApp {
             },
             fetchPublic: createPublicFetch(),
             requesterOf: (conversationId) => this.attribution.requesterOf(conversationId),
+            sealed: (conversationId) => this.sealedConversation(conversationId),
             loopGuard: this.loopGuard,
             roleOf: (personId) => this.config.userById(personId)?.role,
             on: (event, listener) => this.events.on(event, listener),
@@ -1718,38 +1741,50 @@ export class PocketApp {
     // ─── Folder locks ───────────────────────────────────────────────────────
 
     /**
-     * Whether a conversation must keep to local models: it is sealed, works in a locked folder (which seals it), or is
-     * a subagent of one that must. Lantern is sealed when it reads a sealed session (`readsSealed`).
+     * The policy a conversation is sealed to, and the folder that sealed it: it is sealed, works in a locked folder
+     * (which seals it), or is a subagent of one that is. A narrower policy found on the way wins.
      */
-    sealedConversation(id: ConversationId): boolean {
+    sealedPolicy(id: ConversationId): SealedPolicy | undefined {
         let current: ConversationId | undefined = id;
+        let found: SealedPolicy | undefined;
 
         for (let depth = 0; depth < 32 && current !== undefined; depth++) {
-            if (this.folderLocks.isSealed(Number(current))) {
-                if (current !== id) {
-                    this.folderLocks.seal(Number(id));
-                }
+            const sealed = this.folderLocks.policyForSealed(Number(current));
 
-                return true;
+            if (sealed !== undefined) {
+                found = mergeSealed(found, sealed);
             }
 
             if (
                 this.workspaceScheme(this.cwdOf(current)) === undefined &&
                 this.folderLocks.inside(this.cwdOf(current))
             ) {
-                this.folderLocks.seal(Number(current));
+                const lock = this.folderLocks.lockFor(this.cwdOf(current));
+                const policy = lock?.policy ?? { scope: "local" as const };
+                const path = lock?.path;
 
-                if (current !== id) {
-                    this.folderLocks.seal(Number(id));
-                }
-
-                return true;
+                found = mergeSealed(found, {
+                    policy,
+                    ...(path === undefined ? {} : { path }),
+                });
+                this.folderLocks.seal(Number(current), policy, path);
             }
 
             current = this.#parents.get(current);
         }
 
-        return false;
+        if (found === undefined) {
+            return undefined;
+        }
+
+        this.folderLocks.seal(Number(id), found.policy, found.path);
+
+        return this.folderLocks.policyForSealed(Number(id)) ?? found;
+    }
+
+    /** Whether a conversation must keep to the models its folder's policy allows. */
+    sealedConversation(id: ConversationId): boolean {
+        return this.sealedPolicy(id) !== undefined;
     }
 
     /** Whether a conversation's current model is local. */
@@ -1762,25 +1797,43 @@ export class PocketApp {
     }
 
     /**
-     * Whether `viewer` may read sealed conversation `target`: only on a local model, and reading seals it, so what it
-     * read stays local too. Any other pair is free.
+     * Whether `viewer` may read sealed conversation `target`: only on a model the target's policy allows, and reading
+     * seals the viewer to that policy too. Any other pair is free.
      */
     mayRead(viewer: ConversationId, target: ConversationId): boolean {
-        if (!this.folderLocks.guarding || !this.sealedConversation(target)) {
+        if (!this.folderLocks.guarding) {
             return true;
         }
 
-        if (!this.localModel(viewer)) {
+        const sealed = this.sealedPolicy(target);
+
+        if (sealed === undefined) {
+            return true;
+        }
+
+        const ref = this.#agents.get(viewer)?.model;
+        const model =
+            ref === undefined ? undefined : this.models.getModel(ref.provider, ref.modelId);
+        const origin =
+            model === undefined
+                ? undefined
+                : classify({
+                      provider: model.provider,
+                      id: model.id,
+                      local: this.locality.known(model) === true,
+                  });
+
+        if (origin === undefined || !allows(sealed.policy, origin)) {
             return false;
         }
 
-        this.folderLocks.seal(Number(viewer));
+        this.folderLocks.seal(Number(viewer), sealed.policy, sealed.path);
 
         return true;
     }
 
-    /** The conversation a provider session id belongs to, and whether it must stay local. */
-    async #sealedSession(sessionId: string): Promise<boolean> {
+    /** The conversation a provider session id belongs to, and the policy it is sealed to. */
+    async #sealedSession(sessionId: string): Promise<SealedPolicy | undefined> {
         let id = this.#sessionConversations.get(sessionId);
 
         // An id no conversation has cannot be shown to be safe: it counts as sealed (a conversation whose identity is
@@ -1788,7 +1841,7 @@ export class PocketApp {
         const missed = this.#sessionMisses.get(sessionId);
 
         if (id === undefined && missed !== undefined && Date.now() - missed < 30_000) {
-            return true;
+            return { policy: { scope: "local" } };
         }
 
         if (id === undefined) {
@@ -1822,17 +1875,21 @@ export class PocketApp {
             }
         }
 
-        return id === undefined || this.sealedConversation(id);
+        return id === undefined ? { policy: { scope: "local" } } : this.sealedPolicy(id);
     }
 
     /**
-     * Lock a folder (owner only): seal every session that works in it now, so none of them sends what it read to a
-     * model that is not local.
+     * Lock a folder (owner only): seal every session that works in it now to the lock's policy.
      */
-    async lockFolder(user: User, path: string, hide: readonly string[] = []) {
+    async lockFolder(
+        user: User,
+        path: string,
+        hide: readonly string[] = [],
+        policy: LockPolicy = { scope: "local" },
+    ) {
         this.#requireOwner(user);
 
-        const lock = this.folderLocks.lock(path, hide, user.id);
+        const lock = this.folderLocks.lock(path, hide, user.id, policy);
 
         for (const id of new Set([
             ...this.#agents.keys(),
@@ -1856,6 +1913,29 @@ export class PocketApp {
         this.#sendFolderLocks();
 
         return done;
+    }
+
+    /** Change a lock's policy (owner only). A session already sealed keeps the narrower policy it has. */
+    setFolderPolicy(user: User, path: string, policy: LockPolicy) {
+        this.#requireOwner(user);
+
+        const lock = this.folderLocks.setPolicy(path, policy);
+
+        if (lock === undefined) {
+            throw new HttpError(404, "That folder is not locked.");
+        }
+
+        for (const id of new Set([
+            ...this.#agents.keys(),
+            ...Object.keys(this.#sessions).map(Number),
+        ])) {
+            this.sealedPolicy(id as ConversationId);
+        }
+
+        this.#sendFolderLocks();
+        this.providers.modelsChanged();
+
+        return lock;
     }
 
     folderLockView() {
@@ -2883,10 +2963,14 @@ export class PocketApp {
 
         return list.map((summary) => {
             const model = this.models.getModel(summary.provider, summary.id);
+            const local = model !== undefined && this.locality.known(model) === true;
+            const origin = classify({ provider: summary.provider, id: summary.id, local });
 
-            return model !== undefined && this.locality.known(model) === true
-                ? { ...summary, local: true as const }
-                : summary;
+            return {
+                ...summary,
+                ...(local ? { local: true as const } : {}),
+                origin,
+            };
         });
     }
 
@@ -3164,6 +3248,9 @@ export class PocketApp {
                 const failure = this.#failed.get(Number(id) as unknown as ConversationId);
                 const failedAgents = failedSubagents(subagents.get(id) ?? []);
                 const ask = asks.get(id);
+                const sealed = this.folderLocks.guarding
+                    ? this.sealedPolicy(Number(id) as unknown as ConversationId)
+                    : undefined;
                 // Which of HADAL's sessions it continues is the owner's to know (the HADAL sessions sheet), not the list's.
                 const { fromPi: _fromPi, linkedFrom, ...shown } = meta;
                 // Linking does not share the origin: do not leak its id to someone who only sees the new chat.
@@ -3189,10 +3276,13 @@ export class PocketApp {
                     busy,
                     waiting: waiting.has(id),
                     ...(limited.has(id) ? { limited: limited.get(id)! } : {}),
-                    ...(this.folderLocks.guarding &&
-                    this.sealedConversation(Number(id) as unknown as ConversationId)
-                        ? { sealed: true as const }
-                        : {}),
+                    ...(sealed === undefined
+                        ? {}
+                        : {
+                              sealed: true as const,
+                              sealedPolicy: sealed.policy,
+                              ...(sealed.path === undefined ? {} : { sealedPath: sealed.path }),
+                          }),
                     ...(endedAt === undefined ? {} : { endedAt }),
                     ...(failure === undefined ? {} : { failed: true, failure }),
                     ...(failedAgents.length === 0 ? {} : { failedAgents }),
@@ -3358,6 +3448,7 @@ export class PocketApp {
         const subagent = meta === undefined && room.parent !== undefined;
         // A subagent shows what it cost itself: the session's spend and limit are on the session.
         const budget = subagent ? undefined : this.#sessions[String(root)]?.budget;
+        const sealed = this.folderLocks.guarding ? this.sealedPolicy(room.id) : undefined;
 
         return {
             id: room.id,
@@ -3376,10 +3467,14 @@ export class PocketApp {
             // Lantern's own conversation, opened as a page: some session things (a PR to watch) are not for it.
             ...(meta?.pip === undefined ? {} : { pip: true }),
             ...(room.parent === undefined ? {} : { parent: room.parent }),
-            // Kept to local models: its folder is locked, or it read a session that was (`folder-lock.ts`).
-            ...(this.folderLocks.guarding && this.sealedConversation(room.id)
-                ? { sealed: true }
-                : {}),
+            // Kept to the models its folder's policy allows, or to the stricter one it read (`folder-lock.ts`).
+            ...(sealed === undefined
+                ? {}
+                : {
+                      sealed: true as const,
+                      sealedPolicy: sealed.policy,
+                      ...(sealed.path === undefined ? {} : { sealedPath: sealed.path }),
+                  }),
             ...(room.subagentName === undefined ? {} : { subagentName: room.subagentName }),
             // Each browser finds the source's title in its own session list, so only people who can open it get a link.
             ...(forkedFrom === undefined ? {} : { forkedFrom }),

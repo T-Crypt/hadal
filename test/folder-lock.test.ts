@@ -21,7 +21,6 @@ import {
     FolderLocks,
     installLockGate,
     Locality,
-    LOCKED_REQUEST,
     lockEnv,
     privateAddress,
 } from "../src/server/folder-lock.ts";
@@ -410,7 +409,7 @@ test("a sealed session's request to a model that is not local fails before it is
         models as never,
         lock,
         new Locality({ resolve: async () => ["34.1.2.3"] }),
-        async (sessionId) => sessionId === "sealed",
+        async (sessionId) => (sessionId === "sealed" ? { policy: { scope: "local" } } : undefined),
     );
 
     const cloud = model("cloud", "https://api.example.com/v1");
@@ -430,7 +429,9 @@ test("a sealed session's request to a model that is not local fails before it is
         .result();
 
     assert.equal(refused.stopReason, "error");
-    assert.equal(refused.errorMessage, LOCKED_REQUEST);
+    assert.match(refused.errorMessage ?? "", /not in the reviewed registry/);
+    assert.match(refused.errorMessage ?? "", /local models only/);
+    assert.match(refused.errorMessage ?? "", /Pick a model that policy allows/);
     assert.equal(
         (await models.stream(cloud, {} as never, { sessionId: "sealed" } as never).result())
             .stopReason,
@@ -462,7 +463,7 @@ test("with an unreadable lock file, every request to a model that is not local f
 
     const { sent, models } = fakeModels();
 
-    installLockGate(models as never, locks(null), new Locality(), async () => false);
+    installLockGate(models as never, locks(null), new Locality(), async () => undefined);
 
     const answer = await models
         .streamSimple(
@@ -475,4 +476,128 @@ test("with an unreadable lock file, every request to a model that is not local f
     assert.equal(answer.stopReason, "error");
     assert.match(answer.errorMessage ?? "", /folder-locks\.json/);
     assert.deepEqual(sent, []);
+});
+
+test("a us lock allows Claude and blocks DeepSeek; an anthropic lock blocks GPT", async (t) => {
+    const { vault, locks, done } = place();
+
+    t.after(done);
+
+    const lock = locks(null);
+    const { sent, models } = fakeModels();
+
+    installLockGate(
+        models as never,
+        lock,
+        new Locality({ resolve: async () => ["34.1.2.3"] }),
+        async (sessionId) =>
+            sessionId === "sealed"
+                ? { policy: { scope: "us" }, path: "/work" }
+                : sessionId === "claude-only"
+                  ? { policy: { scope: "anthropic" }, path: "/work" }
+                  : undefined,
+    );
+
+    lock.lock(vault, [], undefined, { scope: "us" });
+
+    const claude = model("claude-sonnet-4", "https://api.anthropic.com/v1");
+    const gpt = model("gpt-5", "https://api.openai.com/v1");
+    const deepseek = model("deepseek-v3", "https://api.deepseek.com/v1");
+
+    assert.equal(
+        (await models.streamSimple(claude, {} as never, { sessionId: "sealed" } as never).result())
+            .stopReason,
+        "stop",
+    );
+
+    const refused = await models
+        .streamSimple(deepseek, {} as never, { sessionId: "sealed" } as never)
+        .result();
+
+    assert.equal(refused.stopReason, "error");
+    assert.match(refused.errorMessage ?? "", /DeepSeek/);
+    assert.match(refused.errorMessage ?? "", /US cloud models/);
+
+    const blocked = await models
+        .streamSimple(gpt, {} as never, { sessionId: "claude-only" } as never)
+        .result();
+
+    assert.equal(blocked.stopReason, "error");
+    assert.match(blocked.errorMessage ?? "", /OpenAI/);
+    assert.match(blocked.errorMessage ?? "", /Anthropic/);
+    assert.deepEqual(sent, ["claude-sonnet-4"], "only the allowed model reached the provider");
+});
+
+test("the deepest lock sets the policy", (t) => {
+    const { vault, locks, done } = place();
+
+    t.after(done);
+
+    const lock = locks(null);
+    const child = join(vault, "clients");
+
+    mkdirSync(child);
+
+    lock.lock(vault, [], undefined, { scope: "us" });
+    lock.lock(child, [], undefined, { scope: "anthropic" });
+
+    assert.deepEqual(lock.policyFor(child), { scope: "anthropic" });
+    assert.deepEqual(lock.policyFor(vault), { scope: "us" });
+});
+
+test("a seal narrows with the folder and never widens", (t) => {
+    const { vault, locks, done } = place();
+
+    t.after(done);
+
+    const lock = locks(null);
+    const child = join(vault, "clients");
+
+    mkdirSync(child);
+
+    lock.seal(1, { scope: "us" }, vault);
+    lock.seal(1, { scope: "anthropic" }, child);
+    assert.deepEqual(lock.policyForSealed(1)?.policy, { scope: "anthropic" });
+
+    lock.seal(1, { scope: "us" }, vault);
+    assert.deepEqual(
+        lock.policyForSealed(1)?.policy,
+        { scope: "anthropic" },
+        "a wider policy changes nothing",
+    );
+
+    lock.seal(2, { scope: "us" }, vault);
+    lock.seal(2, { scope: "local" }, vault);
+    assert.deepEqual(lock.policyForSealed(2)?.policy, { scope: "local" });
+});
+
+test("a version 1 lock file reads as local models only, and saves as version 2", (t) => {
+    const { data, locks, done } = place();
+
+    t.after(done);
+    writeFileSync(
+        join(data, "folder-locks.json"),
+        JSON.stringify({
+            version: 1,
+            locks: [{ path: "/work", hide: [], at: 1 }],
+            sealed: [7],
+        }),
+    );
+
+    const lock = locks(null);
+
+    assert.deepEqual(lock.list()[0]?.policy, { scope: "local" });
+    assert.deepEqual(lock.policyForSealed(7)?.policy, { scope: "local" });
+
+    lock.setPolicy("/work", { scope: "us" });
+
+    const saved = JSON.parse(readFileSync(join(data, "folder-locks.json"), "utf8")) as {
+        version: number;
+        locks: { policy: unknown }[];
+        sealed: unknown[];
+    };
+
+    assert.equal(saved.version, 2);
+    assert.deepEqual(saved.locks[0]?.policy, { scope: "us" });
+    assert.equal(saved.sealed.length, 1);
 });

@@ -468,6 +468,13 @@ export interface PocketHost {
     readonly fetchPublic: FetchPublic;
     /** Who HADAL works for in a conversation now: whose message led to its current work. */
     requesterOf(conversationId: ConversationId): string | undefined;
+    /**
+     * Whether a conversation is sealed to a folder lock's model policy. A sealed session may not reach another
+     * machine through `host`: its folder's data would leave the machine the lock guards.
+     *
+     * @experimental In 0.30: it can change in a minor release (docs/extensions/policies/api-stability.md).
+     */
+    sealed(conversationId: ConversationId): boolean;
     /** Why a tool call that repeats one that already failed (or a third identical one) should not run. */
     readonly loopGuard: Pick<LoopGuard, "onRequest" | "noteCall" | "blocked">;
     /**

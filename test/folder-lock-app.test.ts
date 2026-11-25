@@ -28,6 +28,14 @@ const model = scriptedModel((_request, _options, _state, asked) => {
 // faux-2 stands for a cloud model: its address is a public one (TEST-NET-3, nothing answers there).
 Object.assign(model.getModel("faux-2")!, { baseUrl: "https://203.0.113.9/v1" });
 
+// Two more cloud models, named so the model-origin registry can tell them apart.
+const cloud = model.getModel("faux-2")!;
+
+model.models.push(
+    Object.assign({}, cloud, { id: "claude-sonnet-4", baseUrl: "https://api.anthropic.com/v1" }),
+    Object.assign({}, cloud, { id: "deepseek-v3", baseUrl: "https://api.deepseek.com/v1" }),
+);
+
 const vault = join(root, "vault");
 const outside = join(root, "outside");
 let app: Awaited<ReturnType<typeof openApp>>;
@@ -92,4 +100,38 @@ test("a session in a locked folder is sealed and keeps to local models; one outs
         (await app.envFor(other).readTextFile(join(vault, "secret.md"), context)).ok,
         true,
     );
+});
+
+test("a us lock lets Claude in and keeps DeepSeek out", async () => {
+    const folder = join(root, "us-vault");
+
+    mkdirSync(folder, { recursive: true });
+
+    const session = await newSession(app, folder);
+
+    await app.lockFolder(owner(app), folder, [], { scope: "us" });
+
+    const row = app.sessions().find((each) => each.id === Number(session));
+
+    assert.deepEqual(row?.sealedPolicy, { scope: "us" });
+
+    await app.harness.commit(async (tx) => {
+        Object.assign(await tx.doc(AgentDoc, session), {
+            model: { provider: "faux", modelId: "claude-sonnet-4" },
+        });
+    }, context);
+
+    calls = [];
+    await say(app, session, "hello from a us model");
+    assert.deepEqual(calls, ["claude-sonnet-4"], "the US model answered");
+
+    await app.harness.commit(async (tx) => {
+        Object.assign(await tx.doc(AgentDoc, session), {
+            model: { provider: "faux", modelId: "deepseek-v3" },
+        });
+    }, context);
+
+    calls = [];
+    await say(app, session, "send this to a chinese model");
+    assert.deepEqual(calls, [], "the Chinese model was refused before the request");
 });

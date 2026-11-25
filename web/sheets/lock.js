@@ -74,6 +74,23 @@ function policyOf(scope, companies) {
     return scope === "custom" ? { scope: "custom", companies } : { scope };
 }
 
+/** The policy in one line, whatever models are installed. */
+function policyWords(policy) {
+    if (policy.scope === "local") {
+        return "Local models only.";
+    }
+
+    if (policy.scope === "anthropic") {
+        return "Local models and Anthropic.";
+    }
+
+    if (policy.scope === "us") {
+        return "Local models and US cloud models.";
+    }
+
+    return `Local models and ${policy.companies.join(", ")}.`;
+}
+
 export function LockSheet() {
     const path = store.state.sheet?.path ?? "";
     const lock = store.state.folderLocks?.locks?.find((each) => each.path === path);
@@ -183,7 +200,11 @@ export function LockSheet() {
         }
         <div class="group">
             <div class="group-title">What this allows</div>
-            <p class="small">${allowedWords === "" ? "Local models only." : `Local, and ${allowedWords}.`}</p>
+            <p class="small">${policyWords(policy)}</p>
+            ${
+                allowedWords !== "" &&
+                html`<p class="small muted">Installed and allowed: ${allowedWords}.</p>`
+            }
             ${blockedWords !== "" && html`<p class="small muted">Blocked: ${blockedWords}.</p>`}
             ${
                 unknown > 0 &&

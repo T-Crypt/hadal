@@ -224,6 +224,12 @@ export default function createHosts(host: PocketHost) {
 
                     const entry = registry.get(String(target));
 
+                    if (host.sealed?.(api.conversationId) === true) {
+                        return {
+                            block: `${call.name} with host: "${String(target)}" would reach another machine from a session sealed to a folder lock's model policy. Open a session on that machine instead.`,
+                        };
+                    }
+
                     if (entry === undefined || entry.mode === "off") {
                         const usable = registry.usable().map((each) => each.name);
 

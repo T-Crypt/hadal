@@ -65,6 +65,50 @@ const matches = (model, query) => {
  * `/model son` opened it already searching. Opened for the default (`forDefault`, from the menu), it picks the model
  * and thinking level new sessions start with instead, and stays open for both.
  */
+/** Whether a sealed session's policy lets this model answer. Local is always allowed; the server is the boundary. */
+function allowsSealed(policy, model) {
+    if (model.local === true) {
+        return true;
+    }
+
+    const origin = model.origin;
+
+    if (policy === undefined || origin === undefined) {
+        return false;
+    }
+
+    if (policy.scope === "local") {
+        return false;
+    }
+
+    if (policy.scope === "anthropic") {
+        return origin.company === "Anthropic";
+    }
+
+    if (policy.scope === "us") {
+        return origin.region === "us";
+    }
+
+    return (policy.companies ?? []).includes(origin.company);
+}
+
+/** A policy in words, for the note above the models. */
+function sealedWords(policy) {
+    if (policy?.scope === "anthropic") {
+        return "local models and Claude";
+    }
+
+    if (policy?.scope === "us") {
+        return "local models and US cloud models";
+    }
+
+    if (policy?.scope === "custom") {
+        return `local models and ${(policy.companies ?? []).join(", ")}`;
+    }
+
+    return "local models";
+}
+
 export function ModelPicker() {
     const { models, server, me } = store.state;
     const [pipId] = useState(() => store.state.sheet?.pipId);
@@ -111,6 +155,9 @@ export function ModelPicker() {
         store.state.sessions.some(
             (session) => session.id === view.conversation?.id && session.sealed === true,
         );
+    const sealedPolicy = sealedHere
+        ? store.state.sessions.find((session) => session.id === view.conversation?.id)?.sealedPolicy
+        : undefined;
 
     // On a phone, a swipe away from where it opens closes it, as a sheet's does.
     useDragToClose(box, {
@@ -195,7 +242,7 @@ export function ModelPicker() {
     }, [active]);
 
     const pick = (model) => {
-        if (sealedHere && model.local !== true) {
+        if (sealedHere && !allowsSealed(sealedPolicy, model)) {
             return;
         }
 
@@ -431,7 +478,7 @@ export function ModelPicker() {
                 ${
                     sealedHere &&
                     html`<div class="pop-menu-group-head sealed-note" data-part="model-sealed">
-                        <span><${Icon} name="lock" size=${11} /> Locked to local models</span>
+                        <span><${Icon} name="lock" size=${11} /> Locked to ${sealedWords(sealedPolicy)}</span>
                     </div>`
                 }
                 ${shown.map(
@@ -440,8 +487,8 @@ export function ModelPicker() {
                         class=${`pop-menu-row ${index === active ? "on" : ""} ${isCurrent(model) ? "current" : ""}`}
                         role="option"
                         aria-selected=${isPicked(model)}
-                        disabled=${locked || (sealedHere && model.local !== true)}
-                        title=${`${model.provider}/${model.id} · ${formatTokens(model.contextWindow)} context${model.images ? " · images" : ""}${model.account ? ` · on account ${model.account}` : ""}${sealedHere && model.local !== true ? " · not local: this session is locked to local models" : ""}`}
+                        disabled=${locked || (sealedHere && !allowsSealed(sealedPolicy, model))}
+                        title=${`${model.provider}/${model.id} · ${formatTokens(model.contextWindow)} context${model.images ? " · images" : ""}${model.account ? ` · on account ${model.account}` : ""}${sealedHere && !allowsSealed(sealedPolicy, model) ? ` · blocked: ${model.origin?.company ?? "unknown"} (${model.origin?.region ?? "unknown"})` : ""}`}
                         onMouseMove=${() => index !== active && setPicked(index)}
                         onClick=${() => pick(model)}
                     >

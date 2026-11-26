@@ -86,6 +86,7 @@ type Internal =
     | "readOnlyCalls"
     | "reloadModule"
     | "hosts"
+    | "sealed"
     | "toolNames";
 
 type PublicHost = Pick<PocketHost, keyof Host>;

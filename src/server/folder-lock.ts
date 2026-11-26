@@ -101,7 +101,12 @@ const HOST_NAME = /^[a-z0-9][a-z0-9-]{0,30}$/;
 
 /** A remote path, normalized, or undefined when it is not an absolute POSIX path. */
 export function remotePath(path: string): string | undefined {
-    if (typeof path !== "string" || path === "" || path.includes("\u0000") || !path.startsWith("/")) {
+    if (
+        typeof path !== "string" ||
+        path === "" ||
+        path.includes("\u0000") ||
+        !path.startsWith("/")
+    ) {
         return undefined;
     }
 
@@ -912,10 +917,7 @@ export class FolderLocks {
                             saved.version === 1
                                 ? ({ scope: "local" } as const)
                                 : savedPolicy(lock.policy, path),
-                        remote:
-                            saved.version === 1
-                                ? []
-                                : savedRemote(lock.remote, path),
+                        remote: saved.version === 1 ? [] : savedRemote(lock.remote, path),
                     };
                 });
 

@@ -101,6 +101,8 @@ export function LockSheet() {
         lock?.policy?.scope === "custom" ? lock.policy.companies : ["Anthropic"],
     );
     const [hide, setHide] = useState((lock?.hide ?? []).join("\n"));
+    const [remoteHost, setRemoteHost] = useState(lock?.remote?.[0]?.host ?? "");
+    const [remotePath, setRemotePath] = useState(lock?.remote?.[0]?.path ?? "");
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState(null);
     const policy = policyOf(scope, companies);
@@ -132,8 +134,12 @@ export function LockSheet() {
                 .split("\n")
                 .map((each) => each.trim())
                 .filter((each) => each.startsWith("/"));
+            const remote =
+                remoteHost.trim() !== "" && remotePath.trim() !== ""
+                    ? [{ host: remoteHost.trim(), path: remotePath.trim() }]
+                    : [];
 
-            await lockFolder(target, policy, paths);
+            await lockFolder(target, policy, paths, remote);
             closeSheet();
         } catch (failure) {
             setError(failure.message);
@@ -225,6 +231,28 @@ export function LockSheet() {
                     ${unknown} models have no reviewed maker. They stay blocked in every policy.
                 </p>`
             }
+        </div>
+        <div class="field">
+            <div class="label">Remote copy</div>
+            <input
+                type="text"
+                spellcheck="false"
+                autocomplete="off"
+                placeholder="host, such as aphotic"
+                value=${remoteHost}
+                onInput=${(event) => setRemoteHost(event.currentTarget.value)}
+            />
+            <input
+                type="text"
+                spellcheck="false"
+                autocomplete="off"
+                placeholder="/home/you/Work on that host"
+                value=${remotePath}
+                onInput=${(event) => setRemotePath(event.currentTarget.value)}
+            />
+            <div class="muted small">
+                A sealed session may work inside this path on that host. A command there asks you first.
+            </div>
         </div>
         <div class="field">
             <div class="label">Copies to hide</div>

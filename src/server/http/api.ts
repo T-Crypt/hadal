@@ -22,6 +22,7 @@ import {
 import type { User } from "../config.ts";
 import { MAX_AVATAR, readAvatar } from "../avatars.ts";
 import { describe, HttpError } from "../errors.ts";
+import { parseRemoteLocks } from "../folder-lock.ts";
 import { parsePolicy } from "../model-origin.ts";
 import { desktopTheme, wallpaperFile } from "../omarchy.ts";
 import { runningBoard, runningNow } from "../running.ts";
@@ -229,6 +230,7 @@ export function createApi(options: HttpOptions, auth: Auth) {
                 path?: unknown;
                 hide?: unknown;
                 policy?: unknown;
+                remote?: unknown;
             };
 
             if (
@@ -254,9 +256,18 @@ export function createApi(options: HttpOptions, auth: Auth) {
                 );
             }
 
+            const remote = second === "lock" ? parseRemoteLocks(body.remote) : [];
+
+            if (remote === undefined) {
+                throw new HttpError(
+                    400,
+                    "A remote copy needs a host name and an absolute path on that host.",
+                );
+            }
+
             try {
                 if (second === "lock") {
-                    await app.lockFolder(user, body.path, hide, policy);
+                    await app.lockFolder(user, body.path, hide, policy, remote);
                 } else if (second === "policy") {
                     app.setFolderPolicy(user, body.path, policy);
                 } else if (!app.unlockFolder(user, body.path)) {

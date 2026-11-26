@@ -22,7 +22,10 @@ import {
     installLockGate,
     Locality,
     lockEnv,
+    parseRemoteLocks,
     privateAddress,
+    remotePath,
+    withinRemote,
 } from "../src/server/folder-lock.ts";
 
 const context = BACKGROUND_CONTEXT;
@@ -600,4 +603,57 @@ test("a version 1 lock file reads as local models only, and saves as version 2",
     assert.equal(saved.version, 2);
     assert.deepEqual(saved.locks[0]?.policy, { scope: "us" });
     assert.equal(saved.sealed.length, 1);
+});
+
+test("a remote path is normalized and contained", () => {
+    assert.equal(remotePath("/home//tcrypt/../tcrypt/Work/"), "/home/tcrypt/Work");
+    assert.equal(remotePath("relative"), undefined);
+    assert.equal(remotePath("/a/\u0000b"), undefined);
+    assert.equal(withinRemote("/home/tcrypt/Work", "/home/tcrypt/Work"), true);
+    assert.equal(withinRemote("/home/tcrypt/Work/soteria/a", "/home/tcrypt/Work"), true);
+    assert.equal(withinRemote("/home/tcrypt/Working", "/home/tcrypt/Work"), false);
+    assert.equal(withinRemote("/home/tcrypt/Work/../Other", "/home/tcrypt/Work"), false);
+    assert.equal(withinRemote("/anything", "/"), true);
+});
+
+test("remote copies are checked before a lock takes them", () => {
+    assert.deepEqual(parseRemoteLocks([{ host: "aphotic", path: "/home/tcrypt/Work" }]), [
+        { host: "aphotic", path: "/home/tcrypt/Work" },
+    ]);
+    assert.deepEqual(parseRemoteLocks(undefined), []);
+    assert.equal(parseRemoteLocks([{ host: "Bad Host", path: "/a" }]), undefined);
+    assert.equal(parseRemoteLocks([{ host: "aphotic", path: "relative" }]), undefined);
+    assert.equal(
+        parseRemoteLocks(
+            Array.from({ length: 9 }, (_value, index) => ({
+                host: "aphotic",
+                path: `/a/${String(index)}`,
+            })),
+        ),
+        undefined,
+    );
+});
+
+test("a lock keeps the remote copies of its folder", (t) => {
+    const { vault, locks, done } = place();
+
+    t.after(done);
+
+    const remote = [{ host: "aphotic", path: "/home/tcrypt/Work" }];
+    const lock = locks(null);
+
+    lock.lock(vault, [], undefined, { scope: "us" }, remote);
+
+    assert.deepEqual(lock.list()[0]?.remote, remote);
+    assert.deepEqual(
+        lock.remoteLocks("aphotic").map((entry) => entry.path),
+        ["/home/tcrypt/Work"],
+    );
+    assert.equal(lock.lockForRemote("aphotic", "/home/tcrypt/Work/soteria/a")?.path, vault);
+    assert.equal(lock.lockForRemote("aphotic", "/home/tcrypt/Working"), undefined);
+    assert.equal(lock.lockForRemote("other", "/home/tcrypt/Work"), undefined);
+
+    const again = locks(null);
+
+    assert.deepEqual(again.list()[0]?.remote, remote, "it survives a restart");
 });

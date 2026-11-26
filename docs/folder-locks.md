@@ -61,6 +61,20 @@ Chinese model, so the model decides, not the gateway.
 A US company that hosts a non-US model does not make the model US. The maker decides. An aggregator that routes
 to a provider you did not choose is allowed only when the model itself is on the US list.
 
+## Remote copies
+
+A lock can name a copy of the folder on another machine: `host: "aphotic", path: "/home/tcrypt/Work"`. The host
+is a name from Menu, then Hosts. The path is absolute and uses `/` separators; a Windows path is not supported.
+
+- **A sealed session** may use `host: "aphotic"` for `read`, `write`, and `edit` only inside the mapped path. A
+  path outside it is refused. The session's model policy still applies.
+- **A session outside the lock** is blind to the mapped path: `read`, `write`, and `edit` there are refused.
+- **A command on that host asks a person first.** `bash` has no path, so HADAL cannot prove it stays inside. The
+  approval card shows the command. A person's answer is a guard, not a boundary; a command can still read what its
+  user can read.
+- A remote copy has the protections of its own machine. HADAL does not sandbox another machine.
+- The sheet's **Remote copy** fields set one mapping. The API takes `remote: [{ host, path }]`.
+
 ## What the sandbox hides from other sessions
 
 Besides the locked folder, the sandbox hides what holds copies of it, or offers a way around the sandbox:
@@ -86,8 +100,8 @@ folder.
   files for anyone who asks, without a sign-in, is a way around it.
 - **Commands can call any API.** The gate covers HADAL's model requests. A command with a key can still send data
   to a provider the policy blocks. A range VM with a network allowlist is the boundary for that.
-- **SSH-host workspaces** run on another machine and are not covered. The `host` tool is blocked from a sealed
-  session; a workspace provider is a separate path.
+- **SSH-host workspaces** run on another machine and are not covered. A remote copy is covered by the `host`
+  paths above; a workspace provider is a separate path.
 - **Other harnesses** (Claude Code, Codex, OpenCode, DSH) do not read this lock. They need their own rule.
 - **Git over SSH** does not work from a sandboxed session while a folder is locked, because its keys are hidden.
   Use HTTPS (for example `gh auth`) there.
@@ -107,7 +121,7 @@ folder.
   the same in the top bar.
 - The API (owner only):
     - `GET /api/folder-locks`
-    - `POST /api/folder-locks/lock` with `{ "path": "/abs/folder", "policy": { "scope": "us" }, "hide": ["/other/copy"] }`
+    - `POST /api/folder-locks/lock` with `{ "path": "/abs/folder", "policy": { "scope": "us" }, "hide": ["/other/copy"], "remote": [{ "host": "aphotic", "path": "/home/tcrypt/Work" }] }`
     - `POST /api/folder-locks/policy` with `{ "path": "/abs/folder", "policy": { "scope": "anthropic" } }`
     - `POST /api/folder-locks/unlock` with `{ "path": "/abs/folder" }`
 - A policy is `{ "scope": "local" }`, `{ "scope": "anthropic" }`, `{ "scope": "us" }`, or

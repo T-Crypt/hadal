@@ -33,6 +33,7 @@ const cloud = model.getModel("faux-2")!;
 
 model.models.push(
     Object.assign({}, cloud, { id: "claude-sonnet-4", baseUrl: "https://api.anthropic.com/v1" }),
+    Object.assign({}, cloud, { id: "gpt-5", baseUrl: "https://api.openai.com/v1" }),
     Object.assign({}, cloud, { id: "deepseek-v3", baseUrl: "https://api.deepseek.com/v1" }),
 );
 
@@ -134,4 +135,104 @@ test("a us lock lets Claude in and keeps DeepSeek out", async () => {
     calls = [];
     await say(app, session, "send this to a chinese model");
     assert.deepEqual(calls, [], "the Chinese model was refused before the request");
+});
+
+test("a remote copy is open to its sealed session and closed to others", async () => {
+    const folder = join(root, "remote-vault");
+
+    mkdirSync(folder, { recursive: true });
+    await app.setHosts(owner(app), [{ name: "aphotic", target: "tcrypt@aphotic", mode: "allow" }]);
+
+    const session = await newSession(app, folder);
+
+    await app.lockFolder(owner(app), folder, [], { scope: "us" }, [
+        { host: "aphotic", path: "/home/tcrypt/Work" },
+    ]);
+
+    assert.deepEqual(
+        app.folderLockCall(session, { host: "aphotic", path: "/home/tcrypt/Work/soteria/a" }),
+        { decision: "allow" },
+    );
+    assert.equal(
+        app.folderLockCall(session, { host: "aphotic", path: "/home/tcrypt/Working" }).decision,
+        "block",
+    );
+    assert.equal(app.folderLockCall(session, { host: "aphotic" }).decision, "ask");
+    assert.equal(
+        app.folderLockCall(session, { host: "other", path: "/home/tcrypt/Work" }).decision,
+        "block",
+    );
+
+    const blind = await newSession(app, outside);
+
+    assert.equal(
+        app.folderLockCall(blind, { host: "aphotic", path: "/home/tcrypt/Work/soteria/a" })
+            .decision,
+        "block",
+    );
+    assert.equal(
+        app.folderLockCall(blind, { host: "aphotic", path: "/home/tcrypt/Working" }).decision,
+        "allow",
+    );
+    assert.equal(app.folderLockCall(blind, { host: "aphotic" }).decision, "ask");
+
+    const other = join(root, "remote-other");
+
+    mkdirSync(other, { recursive: true });
+    await assert.rejects(
+        app.lockFolder(owner(app), other, [], { scope: "us" }, [
+            { host: "missing", path: "/home/tcrypt/Work" },
+        ]),
+        /There is no host named missing/,
+    );
+});
+
+test("a parent's remote copy cannot open a stricter child's path", async () => {
+    const parent = join(root, "remote-parent");
+    const child = join(parent, "clients");
+
+    mkdirSync(child, { recursive: true });
+    await app.setHosts(owner(app), [{ name: "aphotic", target: "tcrypt@aphotic", mode: "allow" }]);
+
+    const session = await newSession(app, parent);
+
+    await app.lockFolder(owner(app), parent, [], { scope: "us" }, [
+        { host: "aphotic", path: "/home/tcrypt/Work" },
+    ]);
+    await app.lockFolder(owner(app), child, [], { scope: "anthropic" }, [
+        { host: "aphotic", path: "/home/tcrypt/Work/clients" },
+    ]);
+
+    await app.commands.configure(session, owner(app), {
+        model: { provider: "faux", modelId: "claude-sonnet-4" },
+    });
+    assert.equal(
+        app.folderLockCall(session, { host: "aphotic", path: "/home/tcrypt/Work/clients/a" })
+            .decision,
+        "allow",
+        "Claude may read the child",
+    );
+    assert.equal(
+        app.folderLockCall(session, { host: "aphotic", path: "/home/tcrypt/Work/soteria/a" })
+            .decision,
+        "allow",
+        "the parent's own path is under the US policy",
+    );
+
+    await app.commands.configure(session, owner(app), {
+        model: { provider: "faux", modelId: "gpt-5" },
+    });
+    const blocked = app.folderLockCall(session, {
+        host: "aphotic",
+        path: "/home/tcrypt/Work/clients/a",
+    });
+
+    assert.equal(blocked.decision, "block");
+    assert.match(blocked.reason ?? "", /allows local models and Anthropic/);
+    assert.equal(
+        app.folderLockCall(session, { host: "aphotic", path: "/home/tcrypt/Work/soteria/a" })
+            .decision,
+        "allow",
+        "the parent's own path still allows a US model",
+    );
 });

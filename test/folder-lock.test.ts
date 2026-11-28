@@ -357,6 +357,32 @@ test(
             /Vault/,
             "a session cannot unlock its own folder",
         );
+
+        // By model: one the lock allows sees it from outside and is told it entered; one it forbids sees it empty.
+        const entered: string[] = [];
+        const allowed = lockEnv(
+            new NodeExecutionEnv({ cwd: project }),
+            lock,
+            () => project,
+            () => () => true,
+            (each) => entered.push(each.path),
+        );
+
+        assert.match(
+            (await output(allowed, "cat link/notes/secret.md", project)).text,
+            /the secret/,
+        );
+        assert.match((await output(allowed, "cat notes/secret.md", vault)).text, /the secret/);
+        assert.deepEqual(entered, [vault], "a command in the folder enters it");
+
+        const forbidden = lockEnv(
+            new NodeExecutionEnv({ cwd: vault }),
+            lock,
+            () => vault,
+            () => () => false,
+        );
+
+        assert.equal((await output(forbidden, "pwd", vault)).ok, false, "even inside it");
     },
 );
 
@@ -557,6 +583,7 @@ test("a seal narrows with the folder and never widens", (t) => {
     const child = join(vault, "clients");
 
     mkdirSync(child);
+    lock.lock(vault, [], undefined, { scope: "us" });
 
     lock.seal(1, { scope: "us" }, vault);
     lock.seal(1, { scope: "anthropic" }, child);
@@ -571,6 +598,13 @@ test("a seal narrows with the folder and never widens", (t) => {
 
     lock.seal(2, { scope: "us" }, vault);
     lock.seal(2, { scope: "local" }, vault);
+    assert.deepEqual(lock.policyForSealed(2)?.policy, { scope: "local" });
+
+    // The lock is gone: its seals have no effect, and come back with it.
+    lock.unlock(vault);
+    assert.equal(lock.policyForSealed(1), undefined);
+    assert.equal(lock.isSealed(2), false);
+    lock.lock(vault, [], undefined, { scope: "us" });
     assert.deepEqual(lock.policyForSealed(2)?.policy, { scope: "local" });
 });
 

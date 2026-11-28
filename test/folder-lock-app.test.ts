@@ -94,9 +94,12 @@ test("a session in a locked folder is sealed and keeps to local models; one outs
 
     assert.equal(read.ok, false);
 
-    // Unlocking does not unseal: what the session read stays local.
+    // Unlocking ends the seal: the lock decided which models may see the folder, and it is gone.
     app.unlockFolder(owner(app), vault);
-    assert.equal(app.sealedConversation(sealed), true);
+    assert.equal(app.sealedConversation(sealed), false);
+    await app.commands.configure(sealed, owner(app), {
+        model: { provider: "faux", modelId: "faux-2" },
+    });
     assert.equal(
         (await app.envFor(other).readTextFile(join(vault, "secret.md"), context)).ok,
         true,
@@ -153,17 +156,23 @@ test("a remote copy is open to its sealed session and closed to others", async (
         app.folderLockCall(session, { host: "aphotic", path: "/home/tcrypt/Work/soteria/a" }),
         { decision: "allow" },
     );
+    // A lock limits models, not reach: the sealed session goes anywhere else on that host, and to other hosts.
     assert.equal(
         app.folderLockCall(session, { host: "aphotic", path: "/home/tcrypt/Working" }).decision,
-        "block",
+        "allow",
     );
-    assert.equal(app.folderLockCall(session, { host: "aphotic" }).decision, "ask");
+    assert.equal(app.folderLockCall(session, { host: "aphotic" }).decision, "allow");
     assert.equal(
         app.folderLockCall(session, { host: "other", path: "/home/tcrypt/Work" }).decision,
-        "block",
+        "allow",
     );
 
+    // A session on a model the lock forbids is kept out of the copy, and a command there asks a person.
     const blind = await newSession(app, outside);
+
+    await app.commands.configure(blind, owner(app), {
+        model: { provider: "faux", modelId: "deepseek-v3" },
+    });
 
     assert.equal(
         app.folderLockCall(blind, { host: "aphotic", path: "/home/tcrypt/Work/soteria/a" })
@@ -219,10 +228,20 @@ test("a parent's remote copy cannot open a stricter child's path", async () => {
         "the parent's own path is under the US policy",
     );
 
-    await app.commands.configure(session, owner(app), {
+    // Claude reached the child: the session is sealed to the child's policy and cannot switch to GPT.
+    await assert.rejects(
+        app.commands.configure(session, owner(app), {
+            model: { provider: "faux", modelId: "gpt-5" },
+        }),
+        /locked to local models and Anthropic/,
+    );
+
+    const gpt = await newSession(app, outside);
+
+    await app.commands.configure(gpt, owner(app), {
         model: { provider: "faux", modelId: "gpt-5" },
     });
-    const blocked = app.folderLockCall(session, {
+    const blocked = app.folderLockCall(gpt, {
         host: "aphotic",
         path: "/home/tcrypt/Work/clients/a",
     });
@@ -230,9 +249,49 @@ test("a parent's remote copy cannot open a stricter child's path", async () => {
     assert.equal(blocked.decision, "block");
     assert.match(blocked.reason ?? "", /allows local models and Anthropic/);
     assert.equal(
-        app.folderLockCall(session, { host: "aphotic", path: "/home/tcrypt/Work/soteria/a" })
-            .decision,
+        app.folderLockCall(gpt, { host: "aphotic", path: "/home/tcrypt/Work/soteria/a" }).decision,
         "allow",
         "the parent's own path still allows a US model",
     );
+});
+
+test("a session above a locked folder reads it on a model the lock allows, and is sealed by it", async () => {
+    const parent = join(root, "engagements");
+    const child = join(parent, "ops");
+
+    mkdirSync(child, { recursive: true });
+    writeFileSync(join(child, "notes.md"), "ops notes\n");
+    await app.lockFolder(owner(app), child, [], { scope: "anthropic" });
+
+    const claude = await newSession(app, parent);
+
+    await app.commands.configure(claude, owner(app), {
+        model: { provider: "faux", modelId: "claude-sonnet-4" },
+    });
+    assert.equal(app.sealedConversation(claude), false, "working above the lock does not seal");
+
+    const read = await app.envFor(claude).readTextFile(join(child, "notes.md"), context);
+
+    assert.equal(read.ok && read.value, "ops notes\n");
+    assert.deepEqual(app.sealedPolicy(claude)?.policy, { scope: "anthropic" });
+    await assert.rejects(
+        app.commands.configure(claude, owner(app), {
+            model: { provider: "faux", modelId: "gpt-5" },
+        }),
+        /locked to local models and Anthropic/,
+        "what it read keeps it off a model the lock forbids",
+    );
+
+    const gpt = await newSession(app, parent);
+
+    await app.commands.configure(gpt, owner(app), {
+        model: { provider: "faux", modelId: "gpt-5" },
+    });
+    assert.equal(
+        (await app.envFor(gpt).readTextFile(join(child, "notes.md"), context)).ok,
+        false,
+        "a model the lock forbids cannot read it",
+    );
+    assert.equal(app.mayRead(gpt, claude), false, "nor the transcript of a session it sealed");
+    assert.equal(app.sealedConversation(gpt), false);
 });

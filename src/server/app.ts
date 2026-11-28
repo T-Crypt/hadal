@@ -93,6 +93,8 @@ import { defang, quoted } from "./fence.ts";
 import { FolderFavorites } from "./folder-favorites.ts";
 import {
     FolderLocks,
+    PERMITS_NONE,
+    type Permits,
     type RemoteLock,
     type SealedPolicy,
     installLockGate,
@@ -101,7 +103,13 @@ import {
     stricterPolicy,
     withinRemote,
 } from "./folder-lock.ts";
-import { type LockPolicy, allows, classify, describePolicy } from "./model-origin.ts";
+import {
+    type LockPolicy,
+    type ModelOrigin,
+    allows,
+    classify,
+    describePolicy,
+} from "./model-origin.ts";
 import { Gallery } from "./gallery.ts";
 import { Goals } from "./goals.ts";
 import {
@@ -1732,7 +1740,15 @@ export class PocketApp {
         const local = this.workspaceScheme(cwd) === undefined;
 
         return wrapEnv(
-            local ? lockEnv(base, this.folderLocks, () => this.cwdOf(id)) : base,
+            local
+                ? lockEnv(
+                      base,
+                      this.folderLocks,
+                      () => this.cwdOf(id),
+                      () => this.lockPermits(id),
+                      (lock) => this.folderLocks.seal(Number(id), lock.policy, lock.path),
+                  )
+                : base,
             Number(id),
             cwd,
             this.commandEnvs,
@@ -1789,85 +1805,88 @@ export class PocketApp {
         return this.sealedPolicy(id) !== undefined;
     }
 
+    /** The origin of a conversation's current model; undefined when it has none HADAL knows. */
+    #modelOrigin(id: ConversationId): ModelOrigin | undefined {
+        const ref = this.#agents.get(id)?.model;
+        const model =
+            ref === undefined ? undefined : this.models.getModel(ref.provider, ref.modelId);
+
+        return model === undefined
+            ? undefined
+            : classify({
+                  provider: model.provider,
+                  id: model.id,
+                  local: this.locality.known(model) === true,
+              });
+    }
+
     /**
-     * How a tool call on another machine relates to the folder locks. A sealed session may work inside the remote
-     * copies of its own lock; a path inside any remote copy is blocked to a session outside it. A command has no path,
-     * so when a host holds a remote copy, a person decides.
+     * Which lock policies a conversation's current model passes. A lock keeps out the models its policy does not
+     * allow; it does not keep an allowed model in. With no model known, none.
+     */
+    lockPermits(id: ConversationId): Permits {
+        const origin = this.#modelOrigin(id);
+
+        return origin === undefined ? PERMITS_NONE : (policy) => allows(policy, origin);
+    }
+
+    /**
+     * How a tool call on another machine relates to the folder locks. A lock decides only which models may see its
+     * folder: a host with no remote copy of a locked folder is free to every session. A path inside a remote copy is
+     * open to a session whose model the copy's lock allows, and reaching it seals the session to that policy. A
+     * command has no path, so on a host that holds a copy a model some lock there forbids makes a person decide.
      */
     folderLockCall(
         conversationId: ConversationId,
         call: { host: string; path?: string },
     ): { decision: "allow" | "block" | "ask"; reason?: string } {
-        const sealed = this.sealedPolicy(conversationId);
-        const lock = sealed?.path === undefined ? undefined : this.folderLocks.lockFor(sealed.path);
         const mappings = this.folderLocks.remoteLocks(call.host);
 
         if (mappings.length === 0) {
-            return sealed === undefined
-                ? { decision: "allow" }
-                : {
-                      decision: "block",
-                      reason: `This session is sealed to ${describePolicy(sealed.policy)}. It cannot reach ${call.host}.`,
-                  };
+            return { decision: "allow" };
         }
+
+        const permits = this.lockPermits(conversationId);
 
         if (call.path === undefined) {
-            return {
-                decision: "ask",
-                reason: `A folder lock maps ${mappings[0]!.path} on ${call.host}. A command can reach any path there.`,
-            };
-        }
+            const closed = mappings.find((entry) => !permits(entry.lock.policy));
 
-        const inside = mappings.find((entry) => withinRemote(call.path!, entry.path));
-
-        if (sealed === undefined) {
-            return inside === undefined
+            return closed === undefined
                 ? { decision: "allow" }
                 : {
-                      decision: "block",
-                      reason: `${inside.path} on ${call.host} is a locked folder's copy.`,
+                      decision: "ask",
+                      reason: `A folder lock maps ${closed.path} on ${call.host}. A command can reach any path there.`,
                   };
         }
 
-        const own = mappings.find(
-            (entry) =>
-                lock !== undefined &&
-                entry.lock.path === lock.path &&
-                withinRemote(call.path!, entry.path),
-        );
+        const inside = mappings
+            .filter((entry) => withinRemote(call.path!, entry.path))
+            .sort((a, b) => b.path.length - a.path.length)[0];
 
-        if (own === undefined) {
-            return {
-                decision: "block",
-                reason: `This session is sealed to ${describePolicy(sealed.policy)}. It may use only the remote copies of ${lock?.path ?? "its lock"}.`,
-            };
+        if (inside === undefined) {
+            return { decision: "allow" };
         }
 
         // A deeper lock along the same remote path keeps its own policy: a parent's copy cannot open a child's.
-        const deep = this.folderLocks.lockFor(
-            join(own.lock.path, posix.relative(own.path, call.path!)),
-        );
+        const deep =
+            this.folderLocks.lockFor(
+                join(inside.lock.path, posix.relative(inside.path, call.path)),
+            ) ?? inside.lock;
 
-        if (deep !== undefined && deep.path !== own.lock.path) {
-            const ref = this.#agents.get(conversationId)?.model;
-            const model =
-                ref === undefined ? undefined : this.models.getModel(ref.provider, ref.modelId);
-            const origin =
-                model === undefined
-                    ? undefined
-                    : classify({
-                          provider: model.provider,
-                          id: model.id,
-                          local: this.locality.known(model) === true,
-                      });
-
-            if (origin === undefined || !allows(deep.policy, origin)) {
+        for (const lock of deep.path === inside.lock.path ? [inside.lock] : [inside.lock, deep]) {
+            if (!permits(lock.policy)) {
                 return {
                     decision: "block",
-                    reason: `${call.path} is also inside ${deep.path}, which allows ${describePolicy(deep.policy)}.`,
+                    reason:
+                        lock === inside.lock
+                            ? `${inside.path} on ${call.host} is a copy of ${lock.path}, which allows ${describePolicy(lock.policy)}. This session's model is not one of them.`
+                            : `${call.path} is also inside ${lock.path}, which allows ${describePolicy(lock.policy)}.`,
                 };
             }
         }
+
+        this.folderLocks.seal(Number(conversationId), inside.lock.policy, inside.lock.path);
+        this.folderLocks.seal(Number(conversationId), deep.policy, deep.path);
 
         return { decision: "allow" };
     }
@@ -1920,19 +1939,7 @@ export class PocketApp {
             return true;
         }
 
-        const ref = this.#agents.get(viewer)?.model;
-        const model =
-            ref === undefined ? undefined : this.models.getModel(ref.provider, ref.modelId);
-        const origin =
-            model === undefined
-                ? undefined
-                : classify({
-                      provider: model.provider,
-                      id: model.id,
-                      local: this.locality.known(model) === true,
-                  });
-
-        if (origin === undefined || !allows(sealed.policy, origin)) {
+        if (!this.lockPermits(viewer)(sealed.policy)) {
             return false;
         }
 

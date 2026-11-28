@@ -8,6 +8,7 @@ import { after, test } from "node:test";
 import type { FauxResponseStep, Message } from "@earendil-works/pi-ai";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai/providers/faux";
 import type { ContextView, ConversationId } from "@earendil-works/pi-durable";
+import { ConfigStore } from "../src/server/config.ts";
 import { inScope, parseExtensionScopes, scopeOf } from "../src/server/extension-scopes.ts";
 
 after(cleanUp);
@@ -175,4 +176,22 @@ test("a scoped drop-in acts only in sessions inside its folders", async () => {
     } finally {
         await app.close();
     }
+});
+
+test("a hand-written extensionScopes survives a save from a store that loaded before it", () => {
+    const dir = join(root, "scopes-hand-edit");
+    const store = new ConfigStore(dir);
+    const file = store.file;
+
+    store.save();
+    const onDisk = JSON.parse(readFileSync(file, "utf8")) as Record<string, unknown>;
+
+    onDisk.extensionScopes = { "enyo-*.ts": ["/srv/enyo"] };
+    writeFileSync(file, JSON.stringify(onDisk));
+
+    store.save();
+    const after = JSON.parse(readFileSync(file, "utf8")) as { extensionScopes?: unknown };
+
+    assert.deepEqual(after.extensionScopes, { "enyo-*.ts": ["/srv/enyo"] });
+    assert.deepEqual(store.extensionScope("enyo-scope.ts"), ["/srv/enyo"]);
 });

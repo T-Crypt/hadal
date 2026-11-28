@@ -383,7 +383,26 @@ export class ConfigStore {
 
     /** The folders a module acts in (`extensionScopes`); undefined when it acts everywhere. */
     extensionScope(file: string): readonly string[] | undefined {
+        this.#adoptHandEdits();
+
         return scopeOf(parseExtensionScopes(this.#config.extensionScopes), file);
+    }
+
+    /**
+     * `extensionScopes` has no screen: the owner edits the file by hand while HADAL runs. Take the file's value, so a
+     * reload sees it and the next save keeps it instead of writing the stale value from memory over it.
+     */
+    #adoptHandEdits(): void {
+        try {
+            const onDisk = (JSON.parse(readFileSync(this.file, "utf8")) as PocketConfig)
+                .extensionScopes;
+
+            if (onDisk !== undefined) {
+                this.#config.extensionScopes = onDisk;
+            }
+        } catch {
+            // A missing or half-written file keeps the value in memory.
+        }
     }
 
     /** Whether the owner turned a module on or off; undefined when they never chose, so its default applies. */
@@ -581,6 +600,7 @@ export class ConfigStore {
     }
 
     save(): void {
+        this.#adoptHandEdits();
         mkdirSync(dirname(this.file), { recursive: true, mode: 0o700 });
         const temp = `${this.file}.${process.pid}.tmp`;
 

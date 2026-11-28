@@ -1,29 +1,40 @@
 # Folder locks
 
-A locked folder is one that only the models its policy allows may see. The strictest policy allows local models
+A locked folder is one that only the models its policy allows may see. A lock decides which models may work with
+the folder. It does not limit where a session on an allowed model may reach: other folders, other hosts, and the
+network stay open to it. The strictest policy allows local models
 only. The others allow local models plus Claude, plus US cloud models, or plus a set of US companies you pick.
 
 Lock a folder whose contents must not reach a model you do not trust, such as a client's notes or a private
-repository. HADAL keeps the folder on your own machines and on the cloud companies its policy names.
+repository. HADAL keeps forbidden models out of the folder. It does not stop an allowed model from copying the
+folder's data to another host, another folder, or a web service. If the data must not leave a machine, a lock is
+not the tool for that.
 
 ## What a lock does
 
 - **A session that works in the folder is sealed to the lock's policy.** It may send requests only to models the
   policy allows. The model picker shows the other models, but you cannot pick them, and the server refuses a
-  request to one before anything is sent. A seal lasts: moving the session to another folder, or unlocking the
-  folder later, does not let its transcript reach a model the policy did not allow.
+  request to one before anything is sent. A seal lasts while its lock does: moving the session to another folder
+  does not let its transcript reach a model the policy did not allow. Unlocking the folder ends the seals it gave.
 - **A seal narrows, never widens.** A session that moves into a stricter folder, or reads a session sealed to a
   stricter policy, keeps the narrower policy.
 - **Subagents of a sealed session are sealed with it**, wherever they work.
-- **Every other session cannot see the folder.** Its file tools refuse any path that leads into it, symlinks
-  included. Its commands (the shell, `!` commands, checks, background tasks) run in a
-  [bubblewrap](https://github.com/containers/bubblewrap) sandbox in which the folder is an empty directory.
-- **A sealed session cannot reach another machine through `host`.** Its SSH host calls are refused, because the
-  lock cannot see what a remote path holds.
+- **A session on a model the policy forbids cannot see the folder**, wherever it works, a parent folder included.
+  Its file tools refuse any path that leads into it, symlinks included. Its commands (the shell, `!` commands,
+  checks, background tasks) run in a [bubblewrap](https://github.com/containers/bubblewrap) sandbox in which the
+  folder is an empty directory. The check uses the session's current model, each time.
+- **A session on a model the policy allows may work in the folder from anywhere.** A session in `~/Enyo` on Claude
+  can read `~/Enyo/10-ops` when that lock allows Claude. When its file tools, a command's folder, or a background
+  task reach inside, the session is sealed to that lock's policy, so it cannot then switch to a model the lock
+  forbids. A shell command that reads the folder from outside it does not seal the session: HADAL cannot see which
+  files a command reads.
+- **A sealed session can reach other machines through `host`**, and other folders, like any session.
 - **Lantern and other sessions get only what they may see.** A sealed session shows as "Locked session" in
   Lantern's list. A sealed session's waiting calls show the tool but not the command. Its reports, and its messages
   to linked sessions, say only that it answered, unless the receiving session runs on a model the policy allows.
   Reading a sealed session seals the reader to its policy.
+- **A lock is not a data boundary.** It keeps forbidden models out. It does not stop an allowed model from copying
+  data to other hosts, other folders, or the network.
 - **Lessons stay put.** A lesson saved in a sealed session applies only in sealed sessions.
 
 ## Which models count as local
@@ -66,18 +77,21 @@ to a provider you did not choose is allowed only when the model itself is on the
 A lock can name a copy of the folder on another machine: `host: "aphotic", path: "/home/tcrypt/Work"`. The host
 is a name from Menu, then Hosts. The path is absolute and uses `/` separators; a Windows path is not supported.
 
-- **A sealed session** may use `host: "aphotic"` for `read`, `write`, and `edit` only inside the mapped path. A
-  path outside it is refused. The session's model policy still applies.
-- **A session outside the lock** is blind to the mapped path: `read`, `write`, and `edit` there are refused.
-- **A command on that host asks a person first.** `bash` has no path, so HADAL cannot prove it stays inside. The
-  approval card shows the command. A person's answer is a guard, not a boundary; a command can still read what its
-  user can read.
+- **A session on a model the lock allows** may use `host: "aphotic"` for `read`, `write`, and `edit` inside the
+  mapped path, and anywhere else on that host or another host. A call inside the mapped path seals it to the lock's
+  policy. A deeper lock along the same path keeps its own policy.
+- **A session on a model the lock forbids** is blind to the mapped path: `read`, `write`, and `edit` there are
+  refused. A path outside it is free.
+- **A command on that host asks a person first, when the session's model is one a lock there forbids.** `bash` has
+  no path, so HADAL cannot prove it stays out. The approval card shows the command. A person's answer is a guard,
+  not a boundary; a command can still read what its user can read.
 - A remote copy has the protections of its own machine. HADAL does not sandbox another machine.
 - The sheet's **Remote copy** fields set one mapping. The API takes `remote: [{ host, path }]`.
 
-## What the sandbox hides from other sessions
+## What the sandbox hides from a forbidden model
 
-Besides the locked folder, the sandbox hides what holds copies of it, or offers a way around the sandbox:
+A session's commands run in the sandbox when its model is one some lock forbids. Each lock is hidden only from the
+models its policy forbids. Besides the locked folder, the sandbox hides what holds copies of it, or offers a way around the sandbox:
 
 - HADAL's database and the uploads of sealed sessions. The rest of the data folder stays: extensions, themes,
   routers, agents, worktrees.
@@ -111,6 +125,8 @@ folder.
 - **No sandbox, no commands.** Without bubblewrap, a session outside a locked folder cannot run commands at all
   while a lock exists. HADAL refuses rather than run them unguarded.
 - **A lock works from the moment it is set.** What reached a model before then stays with that provider.
+- **Unlocking ends its seals.** A session sealed by a lock that is gone may switch to any model. A sealed session
+  from version 1 of the file, which names no folder, stays sealed.
 
 ## Using it
 

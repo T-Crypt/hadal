@@ -1450,13 +1450,19 @@ export class BackgroundTasks {
 
         // A folder lock is in force: the task runs in the sandbox the session's commands run in (`folder-lock.ts`).
         const locks = this.#app.folderLocks;
-        const blind = locks.any && !locks.inside(this.#app.cwdOf(conversationId));
+        const permits = this.#app.lockPermits(conversationId);
 
-        if (blind && locks.blocked(item.cwd)) {
+        if (locks.any && locks.blocked(item.cwd, permits)) {
             throw new HttpError(403, LOCKED_PATH);
         }
 
-        if (blind && locks.bwrap === undefined) {
+        const lock = locks.any ? locks.lockFor(item.cwd) : undefined;
+
+        if (lock !== undefined) {
+            locks.seal(Number(conversationId), lock.policy, lock.path);
+        }
+
+        if (locks.any && locks.hides(permits) && locks.bwrap === undefined) {
             throw new HttpError(
                 500,
                 "A folder is locked and bubblewrap (bwrap) is not installed, so a background task cannot be kept out of it.",
@@ -1469,7 +1475,7 @@ export class BackgroundTasks {
                       locks.bwrap,
                       [
                           ...locks.sandboxArgs({
-                              blind,
+                              permits,
                               cwd: item.cwd,
                               keep: [this.#dir(conversationId)],
                               detached: true,

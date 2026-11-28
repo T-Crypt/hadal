@@ -1,13 +1,17 @@
 /**
- * Folder locks: folders only local models may see (since 0.29.0).
+ * Folder locks: folders only the models a policy allows may see (since 0.29.0). A lock decides which models may
+ * work with a folder. It does not limit where an allowed model may reach: other folders, other hosts, the network.
  *
  * The owner locks a folder (`~/clients`). From then on:
  *
  * - **A session that works in it is sealed.** Its requests may go only to a model on this machine, the LAN, or the
  *   tailnet (`Locality`); a request to any other model fails before it is sent (`installLockGate`). A seal lasts:
  *   moving the session's folder, or unlocking the folder, does not let its transcript go to a cloud model. Subagents
- *   of a sealed session are sealed with it, and so is Lantern once it reads a sealed session.
- * - **Every other session is blind to it.** Its file tools refuse any path that resolves into a locked folder
+ *   of a sealed session are sealed with it, and so is Lantern once it reads a sealed session. A seal whose lock is
+ *   gone has no effect.
+ * - **A session whose model the policy does not allow is blind to it.** A session on an allowed model may work
+ *   there, and is sealed to the lock's policy when its file tools reach inside. Its file tools refuse any path that
+ *   resolves into a locked folder
  *   (symlinks included), and its commands run in a bubblewrap sandbox in which each locked folder is an empty
  *   directory (`sandboxArgs`). The sandbox also hides what holds copies of a locked folder: HADAL's own database and
  *   uploads, other harnesses' session logs for it, git worktrees of a locked repository, and the ways out of a mount
@@ -476,6 +480,12 @@ const DATA_KEPT = [
 
 // ─── The locks ──────────────────────────────────────────────────────────────
 
+/** Whether a session's model passes a policy. */
+export type Permits = (policy: LockPolicy) => boolean;
+
+/** No policy passes: every locked folder and copy is hidden. */
+export const PERMITS_NONE: Permits = () => false;
+
 export class FolderLocks {
     readonly file: string;
     readonly dataDir: string;
@@ -489,8 +499,8 @@ export class FolderLocks {
     #roots: string[] = [];
     /** Each root and the lock it belongs to, so a sealed session gets the policy of its own folder. */
     #rootPolicies: { root: string; lock: FolderLock }[] = [];
-    /** Copies of locked folders kept elsewhere, hidden from other sessions but not a place to work. */
-    #hidden: string[] = [];
+    /** Copies of locked folders kept elsewhere, and the policy that may see each: hidden, but not a place to work. */
+    #hidden: { path: string; policy: LockPolicy }[] = [];
     /** The file could not be read: everything fails closed until it can. */
     #broken: string | undefined;
     #listeners = new Set<() => void>();
@@ -571,36 +581,74 @@ export class FolderLocks {
         return inside;
     }
 
-    /** Whether a blind session must not touch a path: a locked folder, or a copy of one. */
-    blocked(path: string): boolean {
-        if (this.#roots.length === 0 && this.#hidden.length === 0) {
+    /** The locked roots and hidden copies a model `permits` may not see. Without `permits`, all of them. */
+    #forbidden(permits?: Permits): string[] {
+        const roots =
+            permits === undefined
+                ? this.#roots
+                : this.#rootPolicies
+                      .filter((entry) => !permits(entry.lock.policy))
+                      .map((entry) => entry.root);
+        const hidden = this.#hidden
+            .filter((entry) => permits === undefined || !permits(entry.policy))
+            .map((entry) => entry.path);
+
+        return [...roots, ...hidden];
+    }
+
+    /**
+     * Whether a session must not touch a path: a locked folder, or a copy of one, whose policy does not allow the
+     * session's model. Without `permits`, every locked folder and copy counts.
+     */
+    blocked(path: string, permits?: Permits): boolean {
+        const forbidden = this.#forbidden(permits);
+
+        if (forbidden.length === 0) {
             return false;
         }
 
         const real = canonical(path);
         const literal = resolve(path);
 
-        return [...this.#roots, ...this.#hidden].some(
-            (root) => within(real, root) || within(literal, root),
+        return forbidden.some((root) => within(real, root) || within(literal, root));
+    }
+
+    /** Whether a model `permits` is kept out of anything: a lock, a copy, or a sealed session's data. */
+    hides(permits: Permits): boolean {
+        if (this.#broken !== undefined) {
+            return true;
+        }
+
+        return (
+            this.#locks.some((lock) => !permits(lock.policy)) ||
+            [...this.#sealed.keys()].some((id) => {
+                const sealed = this.policyForSealed(id);
+
+                return sealed !== undefined && !permits(sealed.policy);
+            })
         );
     }
 
     /** Whether a path holds a locked folder or a copy of one: removing or moving it would take the folder along. */
-    holds(path: string): boolean {
+    holds(path: string, permits?: Permits): boolean {
         const real = canonical(path);
 
-        return [...this.#roots, ...this.#hidden].some((root) => within(root, real));
+        return this.#forbidden(permits).some((root) => within(root, real));
     }
 
     isSealed(conversationId: number): boolean {
-        return this.#sealed.has(conversationId);
+        return this.policyForSealed(conversationId) !== undefined;
     }
 
-    /** The policy a sealed session may never widen, and the folder that sealed it. */
+    /**
+     * The policy a sealed session may never widen, and the folder that sealed it. A seal whose lock is gone has no
+     * effect: the owner unlocked the folder. A seal with no folder (version 1 of the file) stays.
+     */
     policyForSealed(conversationId: number): SealedPolicy | undefined {
         const entry = this.#sealed.get(conversationId);
 
-        return entry === undefined
+        return entry === undefined ||
+            (entry.path !== undefined && this.lockFor(entry.path) === undefined)
             ? undefined
             : {
                   policy: clonePolicy(entry.policy),
@@ -758,7 +806,7 @@ export class FolderLocks {
         return this.lockFor(path)?.policy;
     }
 
-    /** Unlock a folder. Sessions sealed while it was locked stay sealed. */
+    /** Unlock a folder. Seals it gave stay on file, with no effect while no lock covers their folder. */
     unlock(path: string): boolean {
         const before = this.#locks.length;
 
@@ -781,12 +829,14 @@ export class FolderLocks {
     }
 
     /**
-     * Bubblewrap's arguments for a command. `blind`: the session works outside every locked folder, so they are empty
-     * to it, with their copies and the ways around a mount namespace. Otherwise only the lock file is read-only.
+     * Bubblewrap's arguments for a command. Each locked folder whose policy `permits` does not pass is empty to it,
+     * with its copies and the ways around a mount namespace. When the model passes every policy, only the lock file
+     * is read-only.
      * `keep` names paths in the data folder the command itself writes (a background task's log).
      */
     sandboxArgs(options: {
-        blind: boolean;
+        /** The policies the session's model passes. What another policy guards is empty to the command. */
+        permits: Permits;
         cwd?: string;
         keep?: readonly string[];
         /** A background task outlives the server: it must not die with it. */
@@ -813,7 +863,7 @@ export class FolderLocks {
             }
         };
 
-        if (options.blind) {
+        if (this.hides(options.permits)) {
             mask(this.dataDir);
 
             for (const name of DATA_KEPT) {
@@ -822,10 +872,6 @@ export class FolderLocks {
                 if (existsSync(kept)) {
                     args.push("--bind", kept, kept);
                 }
-            }
-
-            for (const id of this.#sealed.keys()) {
-                mask(join(this.dataDir, "uploads", String(id)));
             }
 
             for (const kept of options.keep ?? []) {
@@ -841,7 +887,7 @@ export class FolderLocks {
             mask(`/tmp/tmux-${uid}`);
             mask(`/run/screen/S-${userInfo().username}`);
 
-            for (const root of new Set([...this.#roots, ...this.#hidden])) {
+            for (const root of new Set(this.#forbidden(options.permits))) {
                 mask(root);
             }
 
@@ -994,7 +1040,15 @@ export class FolderLocks {
 
     #recompute(): void {
         const roots = new Set<string>();
-        const hidden = new Set<string>();
+        const hidden = new Map<string, { path: string; policy: LockPolicy }>();
+        const hide = (path: string, policy: LockPolicy) => {
+            const kept = hidden.get(path);
+
+            hidden.set(path, {
+                path,
+                policy: kept === undefined ? policy : stricterPolicy(kept.policy, policy),
+            });
+        };
         const rootPolicies = new Map<string, { root: string; lock: FolderLock }>();
 
         for (const lock of this.#locks) {
@@ -1004,13 +1058,13 @@ export class FolderLocks {
             }
 
             for (const each of lock.hide) {
-                hidden.add(resolve(each));
-                hidden.add(canonical(each));
+                hide(resolve(each), lock.policy);
+                hide(canonical(each), lock.policy);
             }
 
             for (const shadow of harnessShadows(resolve(lock.path), this.#home)) {
                 if (existsSync(shadow)) {
-                    hidden.add(shadow);
+                    hide(shadow, lock.policy);
                 }
             }
         }
@@ -1040,13 +1094,19 @@ export class FolderLocks {
             }
         }
 
+        this.#roots = [...roots];
+        this.#rootPolicies = [...rootPolicies.values()];
+
+        // After the roots: a seal counts only while its lock is there (`policyForSealed`).
         for (const id of this.#sealed.keys()) {
-            hidden.add(join(this.dataDir, "uploads", String(id)));
+            const sealed = this.policyForSealed(id);
+
+            if (sealed !== undefined) {
+                hide(join(this.dataDir, "uploads", String(id)), sealed.policy);
+            }
         }
 
-        this.#roots = [...roots];
-        this.#hidden = [...hidden];
-        this.#rootPolicies = [...rootPolicies.values()];
+        this.#hidden = [...hidden.values()];
         this.#insideMemo.clear();
     }
 }
@@ -1097,14 +1157,37 @@ const PATH_FIRST: readonly Method[] = [
 ];
 
 /**
- * A conversation's environment with the locks in force. A session working outside every locked folder (`blind`)
- * cannot read, write, list, or run a command that sees inside one; a session working in one runs its commands with
- * the lock file read-only. With no lock and no sandbox needed, `base` itself.
+ * A conversation's environment with the locks in force. A lock keeps out models its policy does not allow: a session
+ * whose model `permits` does not pass a lock's policy cannot read, write, list, or run a command that sees inside it.
+ * A session whose model passes may work there, and `enter` is told, so the app can seal it to that lock's policy.
+ * Without `permits`, the old rule: a session outside every locked folder passes none, one inside passes all.
+ * With no lock and no sandbox needed, `base` itself.
  */
-export function lockEnv(base: ExecutionEnv, locks: FolderLocks, cwd: () => string): ExecutionEnv {
+export function lockEnv(
+    base: ExecutionEnv,
+    locks: FolderLocks,
+    cwd: () => string,
+    permits?: () => Permits,
+    enter?: (lock: FolderLock) => void,
+): ExecutionEnv {
     const refused = (path: string) => err(new FileError("permission_denied", LOCKED_PATH, path));
     const absolute = (path: string) => (isAbsolute(path) ? path : resolve(base.cwd, path));
-    const blind = () => !locks.inside(cwd());
+    const passes: () => Permits =
+        permits ?? (() => (locks.inside(cwd()) ? () => true : PERMITS_NONE));
+    /** Whether the path is closed to this session's model now; when open and locked, the session enters the lock. */
+    const closed = (path: string): boolean => {
+        if (locks.blocked(path, passes())) {
+            return true;
+        }
+
+        const lock = enter === undefined ? undefined : locks.lockFor(path);
+
+        if (lock !== undefined) {
+            enter!(lock);
+        }
+
+        return false;
+    };
 
     const exec: ExecutionEnv["exec"] = async (command, options, context) => {
         if (!locks.any) {
@@ -1112,19 +1195,19 @@ export function lockEnv(base: ExecutionEnv, locks: FolderLocks, cwd: () => strin
         }
 
         const where = options?.cwd ?? cwd();
-        const isBlind = blind();
+        const now = passes();
 
-        if (isBlind && locks.blocked(where)) {
+        if (closed(where)) {
             return err(new ExecutionError("spawn_error", LOCKED_PATH));
         }
 
         if (locks.bwrap === undefined) {
-            // No sandbox on this machine: a blind session's commands could read a locked folder, so they do not run.
-            return isBlind
+            // No sandbox on this machine: a command could read a lock this model may not see, so it does not run.
+            return locks.hides(now)
                 ? err(
                       new ExecutionError(
                           "shell_unavailable",
-                          "A folder is locked and bubblewrap (bwrap) is not installed, so commands cannot be kept out of it. Install bubblewrap, or run on a local model in the locked folder.",
+                          "A folder is locked and bubblewrap (bwrap) is not installed, so commands cannot be kept out of it. Install bubblewrap, or pick a model every lock allows.",
                       ),
                   )
                 : base.exec(command, options, context);
@@ -1132,7 +1215,7 @@ export function lockEnv(base: ExecutionEnv, locks: FolderLocks, cwd: () => strin
 
         const argv = [
             locks.bwrap,
-            ...locks.sandboxArgs({ blind: isBlind, cwd: where }),
+            ...locks.sandboxArgs({ permits: now, cwd: where }),
             ...(typeof command === "string" ? ["bash", "-c", command] : command),
         ];
 
@@ -1143,11 +1226,11 @@ export function lockEnv(base: ExecutionEnv, locks: FolderLocks, cwd: () => strin
 
     for (const method of PATH_FIRST) {
         guarded.set(method, async (path: string, ...rest: unknown[]) => {
-            if (!locks.any || !blind()) {
+            if (!locks.any) {
                 return (base[method] as (...args: unknown[]) => unknown).call(base, path, ...rest);
             }
 
-            if (locks.blocked(absolute(path))) {
+            if (closed(absolute(path))) {
                 return refused(absolute(path));
             }
 
@@ -1158,7 +1241,7 @@ export function lockEnv(base: ExecutionEnv, locks: FolderLocks, cwd: () => strin
             )) as { ok: boolean; value?: { close?: (context: unknown) => Promise<void> } };
 
             // Asked again after: a symlink swapped in while the call ran does not hand over what it points to.
-            if (locks.blocked(absolute(path))) {
+            if (closed(absolute(path))) {
                 if (result.ok && typeof result.value?.close === "function") {
                     await result.value.close(rest.at(-1)).catch(() => {});
                 }
@@ -1171,7 +1254,7 @@ export function lockEnv(base: ExecutionEnv, locks: FolderLocks, cwd: () => strin
     }
 
     guarded.set("exists", async (path: string, context: unknown) => {
-        if (locks.any && blind() && locks.blocked(absolute(path))) {
+        if (locks.any && closed(absolute(path))) {
             return ok(false);
         }
 
@@ -1179,11 +1262,7 @@ export function lockEnv(base: ExecutionEnv, locks: FolderLocks, cwd: () => strin
     });
 
     guarded.set("remove", async (path: string, options: unknown, context: unknown) => {
-        if (
-            locks.any &&
-            blind() &&
-            (locks.blocked(absolute(path)) || locks.holds(absolute(path)))
-        ) {
+        if (locks.any && (closed(absolute(path)) || locks.holds(absolute(path), passes()))) {
             return refused(absolute(path));
         }
 
@@ -1193,12 +1272,11 @@ export function lockEnv(base: ExecutionEnv, locks: FolderLocks, cwd: () => strin
     guarded.set("renameFile", async (from: string, to: string, context: unknown) => {
         if (
             locks.any &&
-            blind() &&
-            (locks.blocked(absolute(from)) ||
-                locks.holds(absolute(from)) ||
-                locks.blocked(absolute(to)))
+            (closed(absolute(from)) ||
+                locks.holds(absolute(from), passes()) ||
+                closed(absolute(to)))
         ) {
-            return refused(absolute(locks.blocked(absolute(to)) ? to : from));
+            return refused(absolute(locks.blocked(absolute(to), passes()) ? to : from));
         }
 
         return base.renameFile(from, to, context as never);
@@ -1209,17 +1287,18 @@ export function lockEnv(base: ExecutionEnv, locks: FolderLocks, cwd: () => strin
         const listFiles = base.listFiles.bind(base);
 
         guarded.set("listFiles", async (path: string, options: unknown, context: unknown) => {
-            if (locks.any && blind() && locks.blocked(absolute(path))) {
+            if (locks.any && closed(absolute(path))) {
                 return refused(absolute(path));
             }
 
             const listed = await listFiles(path, options as never, context as never);
 
-            if (!listed.ok || !locks.any || !blind()) {
+            if (!listed.ok || !locks.any) {
                 return listed;
             }
 
             const root = absolute(path);
+            const now = passes();
 
             return ok({
                 ...listed.value,
@@ -1227,6 +1306,7 @@ export function lockEnv(base: ExecutionEnv, locks: FolderLocks, cwd: () => strin
                     (entry) =>
                         !locks.blocked(
                             isAbsolute(entry.path) ? entry.path : join(root, entry.path),
+                            now,
                         ),
                 ),
             });
@@ -1236,10 +1316,9 @@ export function lockEnv(base: ExecutionEnv, locks: FolderLocks, cwd: () => strin
     guarded.set(
         "watch",
         async (targets: { path: string }[], onChange: unknown, context: unknown) => {
-            const kept =
-                locks.any && blind()
-                    ? targets.filter((target) => !locks.blocked(absolute(target.path)))
-                    : targets;
+            const kept = locks.any
+                ? targets.filter((target) => !locks.blocked(absolute(target.path), passes()))
+                : targets;
 
             return base.watch(kept as never, onChange as never, context as never);
         },

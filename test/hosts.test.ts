@@ -133,7 +133,16 @@ before(async () => {
     chmodSync(fakeSsh, 0o755);
     process.env.PI_POCKET_SSH = fakeSsh;
     process.env.FAKE_HOST_HOME = remote;
-    app = await openApp(scriptedModel(route));
+    const models = scriptedModel(route);
+
+    // A cloud model a lock forbids (its id names the maker): the faux provider answers it here, so nothing leaves.
+    models.models.push(
+        Object.assign({}, models.getModel("faux-2")!, {
+            id: "deepseek-v3",
+            baseUrl: "https://203.0.113.9/v1",
+        }),
+    );
+    app = await openApp(models);
 });
 
 after(async () => {
@@ -333,7 +342,7 @@ test("the transcript tags a call on another machine with its host", async () => 
     });
 });
 
-test("a session sealed to a folder lock cannot reach a host", async () => {
+test("a session sealed to a folder lock still reaches a host", async () => {
     await app.setHosts(owner(app), [gpu]);
 
     const folder = join(root, "sealed-host");
@@ -344,20 +353,21 @@ test("a session sealed to a folder lock cannot reach a host", async () => {
 
     await app.lockFolder(owner(app), folder);
 
-    const [result] = await run(id, tool("bash", { command: "pwd", host: "gpu" }));
+    const [result] = await run(id, tool("bash", { command: "echo reached", host: "gpu" }));
 
     assert.equal(app.sealedConversation(id), true, "the session is sealed");
-    assert.equal(result?.error, true);
-    assert.match(result!.text, /cannot reach gpu/);
+    assert.equal(result?.error, false);
+    assert.match(result!.text, /reached/);
 });
 
-test("a sealed session reads its lock's remote copy, and a command there asks", async () => {
+test("a remote copy is open to a model its lock allows, and closed to one it forbids", async () => {
     await app.setHosts(owner(app), [{ ...gpu, mode: "allow" }]);
 
     const mapped = join(remote, "locked");
 
     mkdirSync(mapped, { recursive: true });
     writeFileSync(join(mapped, "secret.md"), "the remote secret\n");
+    writeFileSync(join(remote, "notes.txt"), "free notes\n");
 
     const folder = join(root, "sealed-remote");
 
@@ -376,33 +386,43 @@ test("a sealed session reads its lock's remote copy, and a command there asks", 
         app.folderLockView().locks.find((lock) => lock.path === folder)?.remote?.[0]?.path,
         mapped,
     );
-    assert.equal(
-        app.folderLockCall(id, { host: "gpu", path: join(remote, "notes.txt") }).decision,
-        "block",
-    );
 
+    // The lock limits models, not reach: the sealed session reads outside the copy, and runs commands there.
     const outside = (await run(id, tool("read", { path: "notes.txt", host: "gpu" }))).at(-1);
 
-    assert.equal(outside?.error, true);
-    assert.match(outside!.text, /remote copies/);
+    assert.equal(outside?.error, false);
+    assert.match(outside!.text, /free notes/);
 
+    const ran = (await run(id, tool("bash", { command: "cat locked/secret.md", host: "gpu" }))).at(
+        -1,
+    );
+
+    assert.equal(ran?.error, false);
+    assert.match(ran!.text, /the remote secret/);
+
+    // A session on a model the lock forbids is kept out of the copy, and a command on that host asks a person.
     const blindFolder = join(root, "not-locked");
 
     mkdirSync(blindFolder, { recursive: true });
 
     const blind = await newSession(app, blindFolder);
+
+    await app.commands.configure(blind, owner(app), {
+        model: { provider: "faux", modelId: "deepseek-v3" },
+    });
+
     const [blocked] = await run(blind, tool("read", { path: "locked/secret.md", host: "gpu" }));
 
     assert.equal(blocked?.error, true);
-    assert.match(blocked!.text, /locked folder's copy/);
+    assert.match(blocked!.text, /is a copy of/);
 
     const answering = (async () => {
         for (let tries = 0; tries < 200; tries++) {
-            const waiting = app.approvals.forConversation(id)[0];
+            const waiting = app.approvals.forConversation(blind)[0];
 
             if (waiting !== undefined) {
                 assert.equal(waiting.tool, "bash on gpu");
-                app.approvals.answer(waiting.id, { allow: true, by: "Owner" });
+                app.approvals.answer(waiting.id, { allow: false, by: "Owner" });
 
                 return;
             }
@@ -412,11 +432,11 @@ test("a sealed session reads its lock's remote copy, and a command there asks", 
 
         assert.fail("no approval was asked for");
     })();
-    const ran = (await run(id, tool("bash", { command: "cat locked/secret.md", host: "gpu" }))).at(
-        -1,
-    );
+    const denied = (
+        await run(blind, tool("bash", { command: "cat locked/secret.md", host: "gpu" }))
+    ).at(-1);
 
     await answering;
-    assert.equal(ran?.error, false);
-    assert.match(ran!.text, /the remote secret/);
+    assert.equal(denied?.error, true);
+    assert.match(denied!.text, /Owner denied/);
 });

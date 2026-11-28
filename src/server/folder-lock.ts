@@ -1041,6 +1041,7 @@ export class FolderLocks {
     #recompute(): void {
         const roots = new Set<string>();
         const hidden = new Map<string, { path: string; policy: LockPolicy }>();
+
         const hide = (path: string, policy: LockPolicy) => {
             const kept = hidden.get(path);
 
@@ -1049,6 +1050,7 @@ export class FolderLocks {
                 policy: kept === undefined ? policy : stricterPolicy(kept.policy, policy),
             });
         };
+
         const rootPolicies = new Map<string, { root: string; lock: FolderLock }>();
 
         for (const lock of this.#locks) {
@@ -1174,6 +1176,7 @@ export function lockEnv(
     const absolute = (path: string) => (isAbsolute(path) ? path : resolve(base.cwd, path));
     const passes: () => Permits =
         permits ?? (() => (locks.inside(cwd()) ? () => true : PERMITS_NONE));
+
     /** Whether the path is closed to this session's model now; when open and locked, the session enters the lock. */
     const closed = (path: string): boolean => {
         if (locks.blocked(path, passes())) {

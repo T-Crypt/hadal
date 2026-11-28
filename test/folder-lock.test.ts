@@ -606,6 +606,12 @@ test("a seal narrows with the folder and never widens", (t) => {
     assert.equal(lock.isSealed(2), false);
     lock.lock(vault, [], undefined, { scope: "us" });
     assert.deepEqual(lock.policyForSealed(2)?.policy, { scope: "local" });
+
+    // A stale seal does not stop a new lock from sealing the session to its own folder.
+    lock.unlock(vault);
+    lock.lock(child, [], undefined, { scope: "us" });
+    lock.seal(2, { scope: "us" }, child);
+    assert.deepEqual(lock.policyForSealed(2), { policy: { scope: "us" }, path: child });
 });
 
 test("a version 1 lock file reads as local models only, and saves as version 2", (t) => {

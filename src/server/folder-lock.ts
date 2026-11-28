@@ -661,7 +661,11 @@ export class FolderLocks {
      * policy narrows it; one with a wider policy changes nothing.
      */
     seal(conversationId: number, policy: LockPolicy = { scope: "local" }, path?: string): void {
-        const existing = this.#sealed.get(conversationId);
+        // A seal whose lock is gone counts for nothing: a new one replaces it.
+        const existing =
+            this.policyForSealed(conversationId) === undefined
+                ? undefined
+                : this.#sealed.get(conversationId);
         const next =
             existing === undefined ? clonePolicy(policy) : stricterPolicy(existing.policy, policy);
 

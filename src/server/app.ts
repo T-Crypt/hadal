@@ -1089,7 +1089,11 @@ export class PocketApp {
             { builtIn: join(APP_ROOT, "src", "server", "extensions"), dropIn },
             (file) => this.config.extensionChoice(file),
             // What a module's load says can name the server's folders, or quote a provider: the owner's to read.
-            { webs: this.webs, notify: (level, message) => this.ownerNotice(level, message) },
+            {
+                webs: this.webs,
+                notify: (level, message) => this.ownerNotice(level, message),
+                scope: (file) => this.config.extensionScope(file),
+            },
         );
         await this.themes.load().catch((error: unknown) => {
             this.#log(`Themes could not be read: ${describe(error)}`);

@@ -1,4 +1,5 @@
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
+import { parseExtensionScopes, scopeOf } from "./extension-scopes.ts";
 import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -121,6 +122,12 @@ interface PocketConfig {
     extensionSettings?: Record<string, Record<string, string | number | boolean>>;
     /** Other machines HADAL may work on over SSH (`hosts.ts`), as the owner set them up. Absent: none. */
     hosts?: HostEntry[];
+    /**
+     * Extension modules that act only in some folders (`extension-scopes.ts`): a module file name or glob
+     * (`enyo-*.ts`) to the absolute folders (`~/` allowed) its sessions must work in. Absent: every module acts
+     * everywhere. Set by hand; read at start.
+     */
+    extensionScopes?: Record<string, string[]>;
 }
 
 /** The hours a run waits for a model's limit to clear, until the owner says otherwise. */
@@ -372,6 +379,11 @@ export class ConfigStore {
 
     get enabledExtensions(): readonly string[] {
         return this.#config.enabledExtensions ?? [];
+    }
+
+    /** The folders a module acts in (`extensionScopes`); undefined when it acts everywhere. */
+    extensionScope(file: string): readonly string[] | undefined {
+        return scopeOf(parseExtensionScopes(this.#config.extensionScopes), file);
     }
 
     /** Whether the owner turned a module on or off; undefined when they never chose, so its default applies. */

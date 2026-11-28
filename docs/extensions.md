@@ -53,6 +53,23 @@ This page is the map. Read all of it, then only the pages that your task needs.
 
 A drop-in runs inside the server, with the owner's rights. It can read `config.json`, with the owner's token, and each session. Lancet Guard never sees what its code does. Its browser module, if it has one, runs in the app's own page, with the rights of the person whose tab loads it. Before you ask the owner to turn on a drop-in, show the owner the whole module, its browser files too, and say what it does.
 
+### Folder-scoped modules
+
+A module can act only in some folders. Add `extensionScopes` to `config.json` in the data folder, then restart HADAL:
+
+```json
+"extensionScopes": { "enyo-*.ts": ["/home/tcrypt/Enyo"] }
+```
+
+- The key is a module file name, or a glob in which `*` is any run of characters and `?` is one character. The value is a list of absolute folders; `~/` stands for the home folder. A folder that is not absolute is left out. A key with no usable folder makes its modules act nowhere.
+- A session is inside when its working folder (`host.cwdOf`) is one of the folders or under one, by its real path or as written. A session in an SSH workspace is never inside.
+- Outside its folders, the module's prompt sections render nothing, its hooks return nothing, and its wraps leave the tool or section as it was.
+- Its tools are still offered to every session, because all sessions share one registry. Outside its folders a call fails with a refusal that names the module and says why.
+- Not scoped: tasks, routes, browser modules, commands, and what the default export does when it loads.
+- A file whose name starts with `_` is a helper, not a module, so a key for it has no effect.
+
+Code: `src/server/extension-scopes.ts`. Test: `test/extension-scopes.test.ts`.
+
 **A built-in** is a file in `src/server/extensions/`. It is a part of HADAL for each person who uses this copy. Use a built-in only for a change to HADAL itself, and read [self-editing.md](self-editing.md) first ([Making it built in](extensions/built-in.md)).
 
 ## A module

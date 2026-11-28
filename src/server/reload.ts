@@ -9,6 +9,7 @@
  * it installed; a tool call already running still finishes. What a module adds to the app (routes, a browser module,
  * commands) is kept by `ExtensionWebs` and goes in and out with its extensions.
  */
+import { inScope, scopeExtension } from "./extension-scopes.ts";
 import {
     accessSync,
     constants,
@@ -371,6 +372,7 @@ export class ExtensionLoader {
     readonly #builtIn: string;
     readonly #dropIn: string | undefined;
     readonly #choice: (file: string) => boolean | undefined;
+    readonly #scope: (file: string) => readonly string[] | undefined;
     readonly #webs: ExtensionWebs;
     /** Extension names each file installed, to uninstall the ones a new version no longer provides. */
     readonly #installed = new Map<string, Extension[]>();
@@ -411,6 +413,8 @@ export class ExtensionLoader {
             notify?: (level: "info" | "warning" | "error", message: string) => void;
             /** How long a load may take; tests make it short. */
             loadLimitMs?: number;
+            /** The folders a module acts in (`extension-scopes.ts`); undefined: everywhere. Read at each load. */
+            scope?: (file: string) => readonly string[] | undefined;
         } = {},
     ) {
         this.#registry = registry;
@@ -418,6 +422,7 @@ export class ExtensionLoader {
         this.#builtIn = folders.builtIn;
         this.#dropIn = folders.dropIn;
         this.#choice = choice;
+        this.#scope = options.scope ?? (() => undefined);
         this.#webs = options.webs ?? new ExtensionWebs();
         this.#notify = options.notify ?? ((level, message) => host.notice(level, message));
         this.#loadLimitMs = options.loadLimitMs ?? LOAD_LIMIT_MS;
@@ -765,8 +770,16 @@ export class ExtensionLoader {
             }
 
             // A new array, so that one the module froze or keeps is not changed.
+            const kept = module.source === "drop-in" ? extensions.map(keepsContent) : extensions;
+            const folders = this.#scope(file);
             const installed =
-                module.source === "drop-in" ? extensions.map(keepsContent) : extensions;
+                folders === undefined
+                    ? kept
+                    : kept.map((extension) =>
+                          scopeExtension(extension, file, (id) =>
+                              inScope(this.#host.cwdOf(id), folders),
+                          ),
+                      );
 
             this.#webs.check(part);
             const previous = this.#installed.get(file) ?? [];
